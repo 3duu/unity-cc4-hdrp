@@ -25,8 +25,6 @@ Material:
   m_Name: RL_Template_HQ_Skin_HDRP_T
   m_Shader: {fileID: -6465566751694194690, guid: b95ae4633e90900488df70fccd9bce6f,
     type: 3}
-  m_Parent: {fileID: 0}
-  m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
   - _DISABLE_SSR_TRANSPARENT
   - _TESSELLATION_PHONG
@@ -43,7 +41,6 @@ Material:
   - TransparentBackface
   - RayTracingPrepass
   - MOTIONVECTORS
-  m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
@@ -298,7 +295,6 @@ Material:
     - _WrinkleValueSet3L: {r: 0, g: 0, b: 0, a: 0}
     - _WrinkleValueSet3R: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
-  m_AllowLocking: 1
 --- !u!114 &168235113489978298
 MonoBehaviour:
   m_ObjectHideFlags: 11
@@ -311,7 +307,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: da692e001514ec24dbc4cca1949ff7e8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  version: 13
+  version: 12
   hdPluginSubTargetMaterialVersions:
     m_Keys: []
     m_Values: 
