@@ -35,10 +35,7 @@ namespace Reallusion.Import
         private static bool visibility = false;
         public static bool Visibility { get { return visibility; } }
         public static float width;
-        public static float height;
-        public static float containerHeight;
-        public static float containerWidth;
-        public static bool setInitialPosition = false;
+        public static float height;        
 
         public static bool AnyVisible()
         {
@@ -48,19 +45,19 @@ namespace Reallusion.Import
             }
             return false;
         }
-
+        
         public static void ShowAll()
         {
-            visibility = true;
+            visibility = true;            
             foreach (AnimPlayerOverlay apo in createdOverlays)
             {
                 apo.Show();
-            }
+            }            
         }
 
         public static void HideAll()
         {
-            visibility = false;
+            visibility = false;            
             foreach (AnimPlayerOverlay apo in createdOverlays)
             {
                 apo.Hide();
@@ -68,35 +65,39 @@ namespace Reallusion.Import
         }
 
         AnimPlayerOverlay()
-        {
-            isVisible = visibility;
+        {            
+            isVisible = visibility;            
         }
 
         public void Show()
-        {
-            if (isInToolbar) Undock();
-            collapsed = false;
-            setInitialPosition = true;
+        {            
             isVisible = true;
+            if (isInToolbar) Undock();
+            collapsed = false;            
+            floatingPosition = new Vector2(
+                containerWindow.position.width - width - 3f,
+                containerWindow.position.height - height - 3f
+                );            
         }
 
         public void Hide()
-        {
+        {            
             isVisible = false;
         }
 
         public override void OnCreated()
-        {
-            createdOverlays.Add(this);
+        {            
+            createdOverlays.Add(this);            
         }
 
         public override void OnWillBeDestroyed()
-        {
+        {            
             if (createdOverlays.Contains(this))
             {
                 Hide();
                 createdOverlays.Remove(this);
             }
+
             base.OnWillBeDestroyed();
         }
 
@@ -106,18 +107,11 @@ namespace Reallusion.Import
             AnimPlayerGUI.DrawPlayer();
             AnimPlayerGUI.DrawFacialMorph();
 
-            if (setInitialPosition)
+            if (Event.current.type == EventType.Repaint)
             {
-                if (Event.current.type == EventType.Repaint)
-                {
-                    Rect last = GUILayoutUtility.GetLastRect();
-                    width = last.x + last.width;
-                    height = last.y + last.height;
-                    containerHeight = this.containerWindow.position.height;
-                    containerWidth = this.containerWindow.position.width;
-                    floatingPosition = new Vector2(containerWidth - width - 14f, containerHeight - height - 23f);
-                    setInitialPosition = false;
-                }
+                Rect last = GUILayoutUtility.GetLastRect();
+                width = last.x + last.width;
+                height = last.y + last.height;
             }
         }
     }

@@ -137,7 +137,7 @@ namespace Reallusion.Import
         public static void DoScreenShot()
         {
             WindowManager.TakeScreenShot();
-        }  
+        }
 
 #if SOUPDEV        
 
@@ -369,98 +369,6 @@ namespace Reallusion.Import
                 redMaskR, greenMaskR, blueMaskR, alphaMaskR,
                 512, "RL_WrinkleMask_Set12");
         }
-
-
-
-        [MenuItem("Reallusion/Dev/Proc Bump", priority = 220)]
-        public static void DoProcBump()
-        {
-            int width = 2048;
-            int height = 2048;
-
-            Texture2D bumpMap = new Texture2D(width, height, TextureFormat.RGBA32, true);
-
-            Color[] pixels = bumpMap.GetPixels();
-            float[] values = new float[pixels.Length]; 
-
-            float[] rx = new float[100];
-            float[] ry = new float[100];
-            float[] rf = new float[100];
-
-            float scale = 1f;
-
-            for (int i = 0; i < 100; i++)
-            {
-                rx[i] = Random.Range(0f, width);
-                ry[i] = Random.Range(0f, height);
-                rf[i] = Random.Range(0f, 1f);
-            }
-
-            float maxValue = 0f;
-            float minValue = 0f;
-
-            for (int x = 0; x < width; x++)
-            {
-                for (int y = 0; y < height; y++)
-                {
-                    float map = 0.0f;
-                    for (int i = 0; i < 100; i++)
-                    {
-                        float xrx = x - rx[i];
-                        float yry = y - ry[i];
-                        map += Mathf.Sin((Mathf.Sqrt(xrx * xrx + yry * yry) / (2.08f + 5.0f * rf[i])) / scale);
-                    }
-                    float rgb = map/100f;
-                    values[y * width + x] = rgb;
-                    maxValue = Mathf.Max(maxValue, rgb);
-                    minValue = Mathf.Min(minValue, rgb);
-                }
-            }            
-
-            for (int i = 0; i < pixels.Length; i++)
-            {
-                float rgb = Mathf.InverseLerp(minValue, maxValue, values[i]);
-                pixels[i] = new Color(rgb, rgb, rgb, 1.0f);
-            }            
-
-            bumpMap.SetPixels(pixels);
-
-            WritePNG("Assets/Temp", bumpMap, "ProcBump");            
-        }
-
-        private static string WritePNG(string folderPath, Texture2D saveTexture, string textureName)
-        {
-            string filePath = Path.Combine(Path.GetDirectoryName(Application.dataPath), folderPath, textureName + ".png");
-
-            Util.EnsureAssetsFolderExists(folderPath);
-
-            byte[] pngArray = saveTexture.EncodeToPNG();
-
-            File.WriteAllBytes(filePath, pngArray);
-
-            string assetPath = Util.GetRelativePath(filePath);
-            if (File.Exists(filePath)) return assetPath;
-            else return "";
-        }
-
-
-        [MenuItem("Reallusion/Dev/Magica Weight Map", priority = 220)]
-        public static void DoMagicaWeightMap()
-        {
-            CharacterInfo currentCharacter = ImporterWindow.Current.Character;
-
-            string[] folders = new string[] { "Assets", "Packages" };            
-            Texture2D physXWeightMap = Util.FindTexture(folders, "physXWeightMapTest");
-
-            string folder = ComputeBake.BakeTexturesFolder(currentCharacter.path);
-            string name = "magicaWeightMapTest";
-            float threshold = 1f / 255f;
-            Vector2Int size = new Vector2Int(64, 64);
-            // should create the texture in: <current character folder>/Baked/<character name>/Textures
-
-            Texture2D magicaWeightMap = ComputeBake.BakeMagicaWeightMap(physXWeightMap, threshold, size, folder, name);
-        }
-
 #endif
     }
 }

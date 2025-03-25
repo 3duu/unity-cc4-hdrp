@@ -34,9 +34,7 @@ namespace Reallusion.Import
         private static bool visibility = false;
         public static bool Visibility { get { return visibility; } }
         public static float width;
-        public static float height;
-        public static float containerHeight;
-        public static bool setInitialPosition = false;
+        public static float height;        
 
         public static bool AnyVisible()
         {
@@ -72,15 +70,14 @@ namespace Reallusion.Import
 
         public void Show()
         {
-            setInitialPosition = true;            
+            isVisible = true;
             Undock();
             Undock();
-            collapsed = false;
+            collapsed = false;            
             floatingPosition = new Vector2(
                 1f,
                 this.containerWindow.position.height - height - 3f
                 );
-            isVisible = true;
         }
 
         public void Hide()
@@ -106,19 +103,14 @@ namespace Reallusion.Import
 
         public override void OnGUI()
         {
-            AnimRetargetGUI.DrawRetargeter();
+            //if (!AnimPlayerGUI.useLightIcons) AnimPlayerGUI.useLightIcons = true;
+            AnimRetargetGUI.DrawRetargeter();            
 
-            if (setInitialPosition)
+            if (Event.current.type == EventType.Repaint)
             {
-                if (Event.current.type == EventType.Repaint)
-                {
-                    Rect last = GUILayoutUtility.GetLastRect();
-                    width = last.x + last.width;
-                    height = last.y + last.height;
-                    containerHeight = this.containerWindow.position.height;
-                    floatingPosition = new Vector2(1f, containerHeight - height - 23f);
-                    setInitialPosition = false;
-                }
+                Rect last = GUILayoutUtility.GetLastRect();
+                width = last.x + last.width;
+                height = last.y + last.height;
             }
         }
     }

@@ -20,8 +20,10 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Diagnostics;
-#if HDRP_10_5_0_OR_NEWER
 using UnityEngine.Rendering;
+using System.IO;
+using System;
+#if HDRP_10_5_0_OR_NEWER
 using UnityEngine.Rendering.HighDefinition;
 using UnityEditor.Rendering.HighDefinition;
 #endif
@@ -41,7 +43,7 @@ namespace Reallusion.Import
 
     public static class Pipeline
     {
-        public const string VERSION = "1.6.3";
+        public const string VERSION = "1.4.6";
 
 #if HDRP_10_5_0_OR_NEWER
         // version
@@ -528,40 +530,34 @@ namespace Reallusion.Import
 #endif
         }
 
-        public static bool AddDiffusionProfilesHDRP()
+        public static void AddDiffusionProfilesHDRP()
         {
-            bool modified = false;
-
 #if HDRP_10_5_0_OR_NEWER
 #if HDRP_12_0_0_OR_NEWER
             RenderPipelineGlobalSettings pipelineSettings = GraphicsSettings.GetSettingsForRenderPipeline<HDRenderPipeline>();
-            if (!pipelineSettings) return modified;
+            if (!pipelineSettings) return;
             string assetPath = AssetDatabase.GetAssetPath(pipelineSettings);
 #else
             HDRenderPipelineAsset pipelineAsset = GraphicsSettings.renderPipelineAsset as HDRenderPipelineAsset;
-            if (!pipelineAsset) return modified;
+            if (!pipelineAsset) return;
             string assetPath = AssetDatabase.GetAssetPath(pipelineAsset);
 #endif
 
             SerializedObject hdrp = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath(assetPath)[0]);
-            if (hdrp == null) return modified;
-                        
+            if (hdrp == null) return;
+
+            int index;
+            bool modified = false;
             string[] profiles = new string[] { "RL_Skin_Profile", "RL_Teeth_Profile", "RL_Eye_Profile", "RL_SSS_Profile" };
 
 #if HDRP_14_0_0_OR_NEWER
-            VolumeProfile defaultVolumeAsset = null;
-            List<DiffusionProfileSettings> dpsList = null;
-
             SerializedProperty propDefaultVolumeProfile = hdrp.FindProperty("m_DefaultVolumeProfile");
-            if (propDefaultVolumeProfile == null)
-                defaultVolumeAsset = (VolumeProfile)Util.FindAsset("DefaultSettingsVolumeProfile");            
-            else
-                defaultVolumeAsset = (VolumeProfile)propDefaultVolumeProfile.objectReferenceValue;
+            if (propDefaultVolumeProfile == null) return;
+            VolumeProfile defaultVolumeAsset = (VolumeProfile)propDefaultVolumeProfile.objectReferenceValue;
+            if (defaultVolumeAsset == null) return;
 
-            if (defaultVolumeAsset == null) return modified;
-
-            if (!defaultVolumeAsset.TryGet<DiffusionProfileList>(out DiffusionProfileList dpl)) return modified;
-            dpsList = new List<DiffusionProfileSettings>(dpl.diffusionProfiles.value);
+            if (!defaultVolumeAsset.TryGet<DiffusionProfileList>(out DiffusionProfileList dpl)) return;
+            List<DiffusionProfileSettings> dpsList = new List<DiffusionProfileSettings>(dpl.diffusionProfiles.value);
 
             foreach (string profile in profiles)
             {
@@ -597,15 +593,11 @@ namespace Reallusion.Import
             if (modified)
             {
                 dpl.diffusionProfiles.value = dpsList.ToArray();
-                EditorUtility.SetDirty(defaultVolumeAsset);
-                EditorUtility.SetDirty(pipelineSettings);
-                AssetDatabase.SaveAssetIfDirty(defaultVolumeAsset);
-                AssetDatabase.SaveAssetIfDirty(pipelineSettings);
             }
 #else
             SerializedProperty list = hdrp.FindProperty("diffusionProfileSettingsList");            
 
-            if (list == null) return modified;
+            if (list == null) return;
 
             SerializedProperty item;            
 
@@ -623,7 +615,7 @@ namespace Reallusion.Import
 
                     if (add)
                     {
-                        int index = list.arraySize;
+                        index = list.arraySize;
                         if (index < 15)
                         {
                             list.InsertArrayElementAtIndex(index);
@@ -643,7 +635,6 @@ namespace Reallusion.Import
 #endif //HDRP_14_0_0_OR_NEWER
 
 #endif //HDRP_10_5_0_OR_NEWER
-            return modified;
         }
 
         public static Shader GetDefaultShader()
@@ -803,15 +794,15 @@ namespace Reallusion.Import
         }        
 
         public static Material GetTemplateMaterial(string sourceName, MaterialType materialType, MaterialQuality quality, 
-            CharacterInfo info, bool useAmplify = false, bool useTessellation = false, bool useWrinkleMaps = false, bool useDigitalHuman = false)
+            CharacterInfo info, bool useAmplify = false, bool useTessellation = false, bool useWrinkleMaps = false)
         {
             string templateName = GetTemplateMaterialName(sourceName, materialType, quality, info);
 
-            return GetUpgradedTemplateMaterial(sourceName, templateName, quality, useAmplify, useTessellation, useWrinkleMaps, useDigitalHuman);
+            return GetUpgradedTemplateMaterial(sourceName, templateName, quality, useAmplify, useTessellation, useWrinkleMaps);
         }
 
         public static Material GetUpgradedTemplateMaterial(string sourceName, string templateName, MaterialQuality quality, 
-            bool useAmplify, bool useTessellation, bool useWrinkleMaps, bool useDigitalHuman)
+            bool useAmplify, bool useTessellation, bool useWrinkleMaps)
         {
             string customTemplateName;
             Material customTemplate = null;
@@ -820,17 +811,6 @@ namespace Reallusion.Import
             if (useAmplify)
             {
                 customTemplateName = templateName + "_Amplify";
-                foundTemplate = Util.FindMaterial(customTemplateName);
-                if (foundTemplate)
-                {
-                    templateName = customTemplateName;
-                    customTemplate = foundTemplate;
-                }
-            }
-
-            if (useDigitalHuman)
-            {
-                customTemplateName = templateName + "_DH";
                 foundTemplate = Util.FindMaterial(customTemplateName);
                 if (foundTemplate)
                 {

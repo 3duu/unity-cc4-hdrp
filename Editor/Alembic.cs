@@ -202,8 +202,6 @@ namespace Reallusion.Import
                 int index = 0;
                 foreach (Material mat in renderer.sharedMaterials)
                 {
-                    if (!mat) continue;
-
                     string key;
                     string matName = mat.name;
                     string objName = renderer.gameObject.name;

@@ -96,8 +96,6 @@ namespace Reallusion.Import
 
                 foreach (Material m in child.gameObject.GetComponent<Renderer>().sharedMaterials)
                 {
-                    if (!m) continue;
-
                     mDepth = 2;//2nd tier
 
                     string sourceName = Util.GetSourceMaterialName(assetPath, m);
@@ -242,10 +240,5 @@ namespace Reallusion.Import
         {
             ExpandToDepth(rootItem, 0, maxDepth);            
         }        
-
-        public void Release()
-        {
-            objList.Clear();
-        }
     }
 }

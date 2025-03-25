@@ -16,11 +16,14 @@
  * along with CC_Unity_Tools.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEditor.Compilation;
 using System;
-using Scene = UnityEngine.SceneManagement.Scene;
 
 namespace Reallusion.Import
 {
@@ -33,7 +36,6 @@ namespace Reallusion.Import
         public static bool openedInPreviewScene;
         public static bool showPlayer = true;
         public static bool showRetarget = false;
-        public static bool batchProcess = false;
         private static bool eventsAdded = false;
         private static bool showPlayerAfterPlayMode = false;
         private static bool showRetargetAfterPlayMode = false;
@@ -41,16 +43,6 @@ namespace Reallusion.Import
         public delegate void OnTimer();
         public static OnTimer onTimer;
         private static float timer = 0f;
-
-        //unique editorprefs key names
-        public const string sceneFocus = "RL_Scene_Focus_Key_0000";
-        public const string clipKey = "RL_Animation_Asset_Key_0000";
-        public const string animatorControllerKey = "RL_Character_Animator_Ctrl_Key_0000";
-        public const string trackingStatusKey = "RL_Bone_Tracking_Key_0000";
-        public const string lastTrackedBoneKey = "RL_Last_Tracked_Bone_Key_0000";
-        public const string controlStateHashKey = "RL_Animator_Ctrl_Hash_Key_0000";
-        public const string timeKey = "RL_Animation_Play_Position_Key_0000";
-
 
         static WindowManager()
         {
@@ -80,82 +72,38 @@ namespace Reallusion.Import
         }
 
         public static void OnPlayModeStateChanged(PlayModeStateChange state)
-        {
-            switch (state)
+        {            
+            if (state == PlayModeStateChange.EnteredPlayMode)
             {
-                case PlayModeStateChange.ExitingEditMode:
-                    {
-                        break;
-                    }
-                case PlayModeStateChange.EnteredPlayMode:
-                    {
-                        showPlayerAfterPlayMode = showPlayer;
-                        showRetargetAfterPlayMode = showRetarget;
-                        showPlayer = false;
-                        showRetarget = false;
-                        AnimPlayerGUI.ClosePlayer();
-                        AnimRetargetGUI.CloseRetargeter();                        
-
-                        if (Util.TryDeSerializeBoolFromEditorPrefs(out bool val, WindowManager.sceneFocus))
-                        {
-                            if (val)
-                            {
-                                //GrabLastSceneFocus();                                
-                                Util.SerializeBoolToEditorPrefs(false, WindowManager.sceneFocus);
-                                ShowAnimationPlayer();                                
-                                if (Util.TryDeSerializeFloatFromEditorPrefs(out float timeCode, WindowManager.timeKey))
-                                {
-                                    //set the play position
-                                    AnimPlayerGUI.time = timeCode;
-                                    //slightly delay startup to allow the animator to initialize
-                                    AnimPlayerGUI.delayFrames = 2;
-                                }
-                            }
-                        }
-
-                        if (Util.TryDeserializeIntFromEditorPrefs(out int hash, WindowManager.controlStateHashKey))
-                        {
-                            AnimPlayerGUI.controlStateHash = hash;
-                        }
-
-                        
-                        if (Util.TryDeSerializeBoolFromEditorPrefs(out bool track, WindowManager.trackingStatusKey))
-                        {
-                            AnimPlayerGUI.isTracking = track;
-                            if (track)
-                            {
-                                if (Util.TryDeserializeStringFromEditorPrefs(out string bone, WindowManager.lastTrackedBoneKey))
-                                {
-                                    AnimPlayerGUI.ReEstablishTracking(bone);
-                                }
-                            }
-                            Util.SerializeBoolToEditorPrefs(false, WindowManager.trackingStatusKey);
-                        }
-                       
-                        break;
-                    }
-                case PlayModeStateChange.ExitingPlayMode:
-                    {
-
-                        break;
-                    }
-                case PlayModeStateChange.EnteredEditMode:
-                    {
-                        showPlayer = showPlayerAfterPlayMode;
-                        showRetarget = showRetargetAfterPlayMode;
-
-                        break;
-                    }
+                Debug.Log(state);
+                showPlayerAfterPlayMode = showPlayer;
+                showRetargetAfterPlayMode = showRetarget;
+                showPlayer = false;
+                showRetarget = false;
+                AnimPlayerGUI.ClosePlayer();
+                AnimRetargetGUI.CloseRetargeter();
+            }
+            else if (state == PlayModeStateChange.EnteredEditMode)
+            {
+                Debug.Log(state);
+                showPlayer = showPlayerAfterPlayMode;
+                showRetarget = showRetargetAfterPlayMode;
             }
         }
 
         public static void OnBeforeAssemblyReload()
         {
-            if (AnimPlayerGUI.IsPlayerShown())
+            if (AnimationMode.InAnimationMode())  
+            { 
+                Util.LogInfo("Disabling Animation Mode on editor assembly reload.");
+                AnimationMode.StopAnimationMode();
+            }
+
+            if (LodSelectionWindow.Current)
             {
-                HideAnimationPlayer(true);
-                HideAnimationRetargeter(true);
-            }            
+                Util.LogInfo("Closing Lod Selection Window on editor assembly reload.");
+                LodSelectionWindow.Current.Close();
+            }
         }
 
         public static PreviewScene OpenPreviewScene(GameObject prefab)
@@ -163,7 +111,7 @@ namespace Reallusion.Import
             if (!prefab) return default;
             if (!IsPreviewScene && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return default;
 
-            UnityEngine.SceneManagement.Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene);
+            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene);
             GameObject.Instantiate(Util.FindPreviewScenePrefab(), Vector3.zero, Quaternion.identity);
 
             previewSceneHandle = scene;
@@ -185,7 +133,7 @@ namespace Reallusion.Import
             if (IsPreviewScene) 
             {
                 return previewScene;
-            }
+            }            
 
             return default;
         }        
@@ -386,14 +334,10 @@ namespace Reallusion.Import
 
             if (Selection.activeGameObject)
             {
-                string s = AssetDatabase.GetAssetPath(Selection.activeObject);
-                if (string.IsNullOrEmpty(s))
+                GameObject selectedPrefab = Util.GetScenePrefabInstanceRoot(Selection.activeGameObject);
+                if (selectedPrefab && selectedPrefab.GetComponent<Animator>())
                 {
-                    GameObject selectedPrefab = Util.GetScenePrefabInstanceRoot(Selection.activeGameObject);
-                    if (selectedPrefab && selectedPrefab.GetComponent<Animator>())
-                    {
-                        characterPrefab = selectedPrefab;
-                    }
+                    characterPrefab = selectedPrefab;
                 }
             }
 
@@ -404,17 +348,6 @@ namespace Reallusion.Import
 
             return characterPrefab;
         }
-
-        public static void GrabLastSceneFocus()
-        {
-            EditorApplication.delayCall += DelayedGrabSceneFocus; // GC error caused when moving scene focus back during the same frame as opening the player window
-        }
-
-        private static void DelayedGrabSceneFocus()
-        {
-            SceneView.lastActiveSceneView.Focus();
-        }
-
 
         public static void ShowAnimationPlayer()
         {
@@ -428,25 +361,19 @@ namespace Reallusion.Import
                 if (showRetarget) ShowAnimationRetargeter();
 
                 showPlayer = true;
-                if (EditorApplication.isPlaying)
-                {
-                    WindowManager.GrabLastSceneFocus();
-                }
             }
             else
             {
-                Util.LogWarn("No compatible animated character!");
+                Debug.LogWarning("No compatible animated character!");
             }
         }
 
         public static void HideAnimationPlayer(bool updateShowPlayer)
         {
-            if (AnimPlayerGUI.IsPlayerShown())
-            {
-                AnimPlayerGUI.ResetFace();
-                AnimPlayerGUI.ResetCharacterPose();
-                AnimPlayerGUI.ClosePlayer();
-            }
+            if (AnimPlayerGUI.IsPlayerShown()) AnimPlayerGUI.ResetFace();
+
+            AnimPlayerGUI.ClosePlayer();
+
             HideAnimationRetargeter(false);
 
             if (updateShowPlayer)
@@ -470,9 +397,35 @@ namespace Reallusion.Import
                 showRetarget = false;
         }      
         
+        public static bool StopAnimationMode(UnityEngine.Object obj = null)
+        {
+            bool inAnimationMode = false;
+            if (AnimationMode.InAnimationMode())
+            {
+                inAnimationMode = true;
+                AnimationMode.StopAnimationMode();
+                if (obj)
+                {
+                    GameObject scenePrefab = Util.GetScenePrefabInstanceRoot(obj);
+                    Util.TryResetScenePrefab(scenePrefab);
+                }
+            }
+
+            return inAnimationMode;
+        }
+
+        public static void RestartAnimationMode(bool inAnimationMode)
+        {
+            if (inAnimationMode)
+            {
+                if (!AnimationMode.InAnimationMode())
+                    AnimationMode.StartAnimationMode();
+            }
+        }        
+
         public static void StartTimer(float delay)
         {
             timer = delay;
-        }        
+        }
     }
 }

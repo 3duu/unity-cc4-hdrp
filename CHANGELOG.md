@@ -1,95 +1,20 @@
 Changelog
 =========
 
-### 1.6.3
-- Wrinkle manager update Blend shape indices button.
-- Wrinkle system setup will look for wrinkle masks in Assets as well as packages. (If tools installed into assets and not with package manager)
-- Wrinkle system added to URP shader graph shaders.
-- Anisotropic highlights added to URP shader graph hair shaders.
-- Mesh extraction checks for duplicate blend shape names.
-- URP Amplify hair shaders support for Forward+ additional lights.
-- URP Amplify shaders recompiled for ASE-1.9.6 (Fixes URP17 issues).
-- Fix to colliders not being added with just hair physics.
-- Fix to HDRP diffusion profiles not being added in HDRP17.
-
-### 1.6.2
-- URP Amplify shader fix for when there is no main light.
-- Work around to intermittent CC4 specular export issue when exporting with 'Bake diffuse maps from skin color' option (which is enabled by default now).
-- Fix to physics assignment when shared materials count does not match submesh count.
-
-### 1.6.1
-- Magica Cloth 2 support for hair physics.
-    - Magica Cloth and collider navigation tools added.
-
-### 1.6.0
-- Fixes to root bones and physics components in LOD combiner.
-- Support for Magica Cloth 2 Physics (if present) - Cloth simulation and spring bones.
-- Collider Manager rebuild to support magica cloth
-    - Collider editor now uses direct on screen manipulation of colliders.
-- Support for Json Schema 1.2
-    - A bug in CC4 can cause the character to export with this schema.
-- Run time wrinkle material fix.
-
-### 1.5.2
-- Animation Retargeter fixes.
-    - AnimationMode removed.
-    - Clip generation file name suffix corrected.
-    - Animation Clip overwrite no longer breaks references in Unity 2023.1.
-    - Clip settings (foot IK, mirror, speed) reset to defaults on opening retarget window.
-- Character prefab generation no longer breaks references. (Except 2023.1.1-5 due to Unity bugs)
-- Rogue usings removed from code.
-- Animation processing fixes.
-    - Correct character prefab used to retarget _motion.fbx files.
-    - Animation Clip overwrite no longer breaks references in Unity 2023.1.
-
-### 1.5.1
-- Character Build no longer creates and adds a default animation controller due to bugs in Unity 2022/2023 causing memory leaks when applying animation controllers to prefabs.
-- Instalod and other renamed object/material name matching improvements.
-- Cloth physics fix for extracted non physics materials using 2-pass hair.
-- Shaders recompiled for URP10/12/15.
-
-### 1.5.0
-- Animation player system rebuilt to remove AnimationMode and operate in play mode (in Editor).
-    - New system includes foot IK preview, variable speed and camera bone targeting and play mode operation.
-- Optional (WIP) HDRP dual specular shader added for HQ skin. (Enabled in the import window options)
-- HDRP mask detail mask correction. (Export from CC4 not using correct micro normal mask)
-- HDRP lighting fix when first loading preview scene.
-- Batch processing window added.
-- Physics sphere collider support added.
-- Import procedure now processes all <character_name>_Motion.Fbx files with the character.
-- Fix to character build crash in Unity 2023.1
-- Fix to Diffusion profiles not saving to default volume asset in 2023.1.
-
-### 1.4.9
-- Refresh button fix...
-
-### 1.4.8
-- Fix to missing materials in shared material slots.
-- Fix to two pass hair extraction when re-using the same material.
-- Fix to hair mesh extraction when hair and non-hair materials share vertices.
-- Support for updated spring rigs from blender tools add-on.
-- Improved PhysX weight mapping from mesh to cloth vertices.
-- Added refresh button to importer window when no characters detected.
-
-### 1.4.7
-- Brow correction added to wrinkle map system.
-- Wrinkle sets additive blending.
-- Wrinkle Manager configuration serialized, to allow for further customization.
-
-### 1.4.6
+### v.1.4.6
 - Added ray tracing settings to preview scene lights.
 - Fix to HDRP diffusion profiles not setting up in HDRP14 (2022.2)
 
-### 1.4.5
+### v 1.4.5
 - Flow maps added to wrinkle map system.
 - URP & 3D shader pass and recompile.
 - URP & 3D Baked wrinkle maps normal fix.
 - HDRP Preview scene lighting update (to replicate some CC4 atmosphere setups)
 
-### 1.4.4.1
+### v 1.4.4.1
 - URP12 Shader flag pass & enable deferred rendering.
 
-### 1.4.4
+### v 1.4.4
 - Full wrinkle map specification implemented.
     - Wrinkle map manager controls script on body mesh.
     - Added baking of wrinkle map system.
@@ -100,20 +25,20 @@ Changelog
 - Fix to bake not working with 2 pass hair materials.
 - Color space correction directives for baking.
 
-### 1.4.3
+### v 1.4.3
 - Tries to untangle instalod duplication suffixes on accessories.
     - inc. Script error fix that was blocking build materials when instalod meshes were not found in Json data.
 - Cast shadows removed from Tearline, Eye occlusion and scalp meshes.
 - Stand alone shader packages for the various pipelines included in /Packages/ folder.
 
-### 1.4.2
+### v 1.4.2
 - OSX and Linux file path support.
 - Tweaked character model importer settings for better normal import and blend shape normal generation. Should reduce mesh smoothing issues.
 - Disabled Menu Mesh Tools when not working on a generated prefab. (The tools cannot operate directly on an FBX)
 - Fixed Bake not replacing materials with baked versions.
 - Eye Occlusion shaders factor in Occlusion Color alpha value.
 
-### 1.4.1
+### v 1.4.1
 - Traditional material glossiness fix.
 - High poly (sub-division) hair mesh extraction fix.
 - SSS Diffusion profile added.
@@ -126,7 +51,7 @@ Changelog
 - Bake Hair function now only bakes the result of the 'Enable Color' properties into the diffuse maps of the hair materials. Press again to revert to original diffuse maps.
 - Improved ActorCore and ActorBuild single material detection.
 
-### 1.4.0
+### v 1.4.0
 - Import & Setup
     - ActorBuild detection separated from ActorCore (ActorBuild can have more advanced materials)
     - Fix to Instalod merged material characters detection.
@@ -153,12 +78,12 @@ Changelog
         - HDRP10 for the High Definition Render Pipeline version 10 and 11: Unity 2020.3 upto 2021.1
         - HDRP12 for the High Definition Render Pipeline version 12 and 13: Unity 2021.2 upwards.
 
-### 1.3.9
+### v 1.3.9
 - Due to shader incompatibilities between URP10 and URP12, the URP package must be split into 2 versions:
     - URP10 for the Univeral Render Pipeline version 10 and 11: Unity 2020.3 upto 2021.1
     - URP12 for the Univeral Render Pipeline version 12 and 13: Unity 2021.2 upwards.
 
-### 1.3.8
+### v 1.3.8
 - Added tessellation shaders and templates to 3D and URP pipelines.
 - Upgraded to Amplify 1.9 shaders in 3D and URP pipelines.
 - Fixed some issues with hair shaders in 3D and URP.
@@ -166,21 +91,21 @@ Changelog
 - Added Hair Bake preview button.
 - Updated preview scene lighting presets, should all look roughly the same lighting across all three pipelines.
 
-### 1.3.7
+### v 1.3.7
 - Backported function to mid release 2020.3 and 2021.1 SaveAssetIfDirty removed.
 - GUIDFromAssetPath Unity 2019 fix for built-in pipeline.
 
-### 1.3.6
+### v 1.3.6
 - Runtime components Build fix.
 
-### 1.3.5
+### v 1.3.5
 - Fixes
     - Collider manager now remembers the currently selected collider.
     - Collider manager editor now has rotation adjustment sliders.
     - Animation Player is closed on entering Play mode.
     - Save and Recall physics settings now works correctly in Editor mode and remembers settings per character.
 
-### 1.3.4
+### v 1.3.4
 - Cloth physics added
     - Colliders generated from character JSON data.
     - Weightmaps used to generate cloth coefficients.
@@ -189,7 +114,7 @@ Changelog
     - Optimized collider detection.
     - Collider margin adjust and weightmap based detection threshold settings.
 
-### 1.3.3
+### v 1.3.3
 - Updates / Additions:
     - Tessellation option added to build settings. (Currently HDRP12 Only)
     - Lighting presets added to preview scene, and lighting cycle button added to importer window. (All pipelines)
@@ -220,41 +145,41 @@ Changelog
     - Character prefab no longer gets stuck in current Animation Player pose after recompiling editor assembly.
     - Numerous fixes to internal workings and code refactors.
 
-### 1.3.2
+### v 1.3.2
 - HDRP12 (Unity 2021.2+) Single pass hair shader fixes.
 - HDRP Skin SSS transmission thickness min-max remap parameters.
 
-### 1.3.1
+### v 1.3.1
 - Arm Flexion correction added.
 
-### 1.3.0
+### v 1.3.0
 - Animation correction and facial expression retargeting system added.
     - Correction sliders for shoulders, arms, legs, heels and height.
     - Fix open mouth in 3rd party animations for target CC3/4 character.
     - Retarget facial expression animation tracks to target CC3/4 character.
 - Alembic material setup feature added. (Unity Alembic package must be installed)
 
-### 1.2.3
+### v 1.2.3
 - Skin diffuse Color modifier color-space correction.
 - Hair diffuse Color modifier added.
 - ActorBuild and ActorScan characters from CC4 correctly detected and set to Humanoid Rig.
 
-### 1.2.2
+### v 1.2.2
 - Skin Diffuse Color modifier added.
 - Built-in pipeline version reduced minimum version to 2019.4.11f1.
 
-### 1.2.1
+### v 1.2.1
 - Fix to Subsurface modifiers.
 - Iris Color and Iris Cloudy Color added to eye parameters.
 - Moved menu name from **CC3** to **Reallusion**.
 
-### 1.2.0
+### v 1.2.0
 - Blender Tools to Unity pipeline implemented.
     - Using compute shaders for baking Unity packed textures from base Blender textures.
     - Eye Occlusion and Tearline shaders updated for Blender model space.
 - Diffuse Color modifier correctly converted from linear to sRGB color space.
 
-### 1.1.1
+### v 1.1.1
 - Amplify Shaders added.
 - Amplify Baked material shaders added.
 - Inclusion of MSAA coverage alpha blending hair shaders. (Amplify - URP/3D only)
@@ -266,26 +191,26 @@ Changelog
 - Reworked "AO Occlude All" in non-amplify hair shaders.
 - Template Clean up.
 
-### 1.0.0
+### v 1.0.0
 - Animation & Expression preview system.
 - Eye Brightness, Saturation, Occlusion sharpness changes.
 - Eye Occlusion colour changed to lit multiply blend. (Should no longer glow in the dark.)
 - Parallax eyes shaders updated.
 - Bake shaders updated.
 
-### 0.3.0
+### v 0.3.0
 - Parallax eye shader + baking shaders.
 - Fix to open/close mouth and eyes for gamebase and LOD characters.
 
-### 0.2.2
+### v 0.2.2
 - Skin subsurface scattering fix for Unity 2021.1
 
-### 0.2.1
+### v 0.2.1
 - Fix to 2-Pass mesh extraction crashing when no vertex colors were present.
 - Fix to Bump maps being incorrectly detected during material and baking setups.
 - Added normal strength calculations to built-in hair shaders.
 
-### 0.2.0
+### v 0.2.0
 - Fix to eye occlusion compute bake shader.
 - Adusted eye shader corner shadow gradient.
 - Teeth, Tongue & Eye micro normals maps correctly set to normal maps.
@@ -299,39 +224,39 @@ Changelog
     - Added emission to the Built-in high quality and baked shaders.
     - Removed post processing settings from the preview scene, as they caused errors in later versions.
 
-### 0.1.9
+### v 0.1.9
 - **URP & Built-in Pipelines**
     - Added shaders and materials to use the build-in and Universal render pipeline.
 - **Code base**
     - Bake shaders and materials updated to support Standard shader and URP/Lit shader.
     - Fixes to material setup texture discovery.
 
-### 0.1.8b
+### v 0.1.8b
 - Fix to baking functions with missing textures.
 
-### 0.1.8
+### v 0.1.8
 - After applying materials or baking materials in the tool window, the generated prefab is selected in the project window.
 - Characters in the preview window are replaced with the generated Prefab after material setup.
 - Fixed baking LOD Group character materials.
 - Baking LOD Group characters now also creates LOD Group prefab.
 
-### 0.1.7
+### v 0.1.7
 - Reduced memory use for asset searches and character discovery.
 - Prevented Import Tool window from holding on to character object references and hogging all the memory.
 - Right Click menu "Import Character" now opens Import Tool window *only* for that character.
 - Added refresh button on Import Tool window to rebuild the character list for when characters are added or removed.
 
-### 0.1.6
+### v 0.1.6
 - Added custom diffusion profiles.
 
-### 0.1.5
+### v 0.1.5
 - Reworked and cleaned up Teeth and Tongue shaders & bake shaders.
 - Fix to editor code .asmdef preventing build for non editor platforms.
 
-### 0.1.4
+### v 0.1.4
 - Reworked eye occlusion calculations.
 
-### 0.1.3
+### v 0.1.3
 - Normal strength settings for all relevant custom shaders.
 - All normal map, micro normal map and blend normal map textures default to Bump mode when empty.
 - Emission texture and Emissive color properties added to all custom shaders.
@@ -339,9 +264,9 @@ Changelog
 - Logs errors when Json data fails to read.
 - Improved alpha channel manipulation in Hair shader.
 
-### 0.1.1
+### v 0.1.1
 - Bake button will not activate until the character has been imported and set-up with High-Quality materials.
 - Animation button will not activate until the character has been imported and set-up with either Default or High-Quality materials.
 
-### 0.1.0
+### v 0.1.0
 - Initial release.

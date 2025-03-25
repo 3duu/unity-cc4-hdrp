@@ -32,7 +32,6 @@
  */
 
 
-using Reallusion.Import;
 using System.IO;
 using System.Text.RegularExpressions;
 using UnityEditor;
@@ -234,7 +233,7 @@ public class QuickAnimProcess : Editor
                 if (AssetPathIsEmpty(fullOutputPath)) break;
             }
         }
-        Util.LogInfo("Writing Asset: " + fullOutputPath);
+        Debug.Log("Writing Asset: " + fullOutputPath);
         AssetDatabase.CreateAsset(animationClip, fullOutputPath);
     }
 
