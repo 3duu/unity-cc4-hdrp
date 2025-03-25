@@ -17,11 +17,14 @@
  */
 
 using System.IO;
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 using Object = UnityEngine.Object;
 using System.Linq;
+using System.Data.Sql;
 
 namespace Reallusion.Import
 {
@@ -388,7 +391,13 @@ namespace Reallusion.Import
                 if (shader != null)
                 {
                     if (shader.name.iEquals(name))
-                    {
+                    {                        
+#if UNITY_2020_3_OR_NEWER                        
+                        if (Application.platform == RuntimePlatform.OSXEditor)
+                            shader.EnableKeyword("_MAC_OS");
+                        else
+                            shader.DisableKeyword("_MAC_OS");
+#endif
                         return shader;
                     }
                 }
@@ -725,7 +734,6 @@ namespace Reallusion.Import
                     string searchName = Path.GetFileNameWithoutExtension(searchPath).ToLowerInvariant();
                     if (searchName.Contains(name))
                     {
-                        //Debug.Log(searchName);
                         results.Add(AssetDatabase.LoadAssetAtPath<Material>(searchPath));
                     }
                 }
@@ -825,7 +833,7 @@ namespace Reallusion.Import
                 // first look for an animation that matches the prefab name
                 found = FindAnimation(f, name, false, true);
 
-                // then look for an animation that matches the base name of the character (before any _LodSomething)
+                // then look for an animation that matches the base name of the character (before any _LodN)
                 if (!found)
                 {
                     int index = name.IndexOf("_Lod", System.StringComparison.InvariantCultureIgnoreCase);
@@ -846,13 +854,13 @@ namespace Reallusion.Import
             return found;
         }
 
-        public static AnimationClip[] GetAllAnimationClipsFromCharacter(GameObject sourceFbx)
+        public static AnimationClip[] GetAllAnimationClipsFromCharacter(string sourceFbxPath)
         {
             List<AnimationClip> clips = new List<AnimationClip>();
 
-            if (sourceFbx)
+            if (!string.IsNullOrEmpty(sourceFbxPath))
             {
-                Object[] data = AssetDatabase.LoadAllAssetRepresentationsAtPath(AssetDatabase.GetAssetPath(sourceFbx));
+                Object[] data = AssetDatabase.LoadAllAssetRepresentationsAtPath(sourceFbxPath);
                 foreach (Object subObject in data)
                 {
                     if (subObject.GetType().Equals(typeof(AnimationClip)))
@@ -875,6 +883,23 @@ namespace Reallusion.Import
                 if (path.iEndsWith(".prefab")) return fbxAsset;
                 string folder = Path.GetDirectoryName(path);
                 string name = Path.GetFileNameWithoutExtension(path);
+                string searchName = name;
+                if (baked) searchName = name + Importer.BAKE_SUFFIX;
+                string prefabPath = Path.Combine(folder, Importer.PREFABS_FOLDER, searchName + ".prefab");
+                if (File.Exists(prefabPath))
+                    return AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            }
+            return null;
+        }
+
+        public static GameObject FindCharacterPrefabAsset(string fbxPath, bool baked = false)
+        {            
+            if (!string.IsNullOrEmpty(fbxPath))
+            {
+                if (fbxPath.iEndsWith(".prefab")) 
+                    return AssetDatabase.LoadAssetAtPath<GameObject>(fbxPath);
+                string folder = Path.GetDirectoryName(fbxPath);
+                string name = Path.GetFileNameWithoutExtension(fbxPath);
                 string searchName = name;
                 if (baked) searchName = name + Importer.BAKE_SUFFIX;
                 string prefabPath = Path.Combine(folder, Importer.PREFABS_FOLDER, searchName + ".prefab");
@@ -971,17 +996,7 @@ namespace Reallusion.Import
                         if (prefabObj.transform.localScale != source.transform.localScale) resetSca = true;
                         if (resetPos) prefabObj.transform.localPosition = source.transform.localPosition;
                         if (resetRot) prefabObj.transform.localRotation = source.transform.localRotation;
-                        if (resetSca) prefabObj.transform.localScale = source.transform.localScale;
-                        /*
-                        if (resetPos || resetRot || resetSca) 
-                        { 
-                            string report = "Resetting " + prefabObj.name + ":";
-                            if (resetPos) report += " Position";
-                            if (resetRot) report += " Rotation";
-                            if (resetSca) report += " Scale";
-                            Debug.Log(report);
-                        }
-                        */
+                        if (resetSca) prefabObj.transform.localScale = source.transform.localScale;                        
                     }                    
 
                     for (int i = 0; i < prefabObj.transform.childCount; i++)
@@ -1069,20 +1084,41 @@ namespace Reallusion.Import
             }
 
             return null;
-        }        
+        }     
+        
+        public static bool AssetPathExists(string assetPath)
+        {
+            return File.Exists(assetPath);
+        }
 
         public static bool AssetPathIsEmpty(string assetPath)
         {
             const string emptyGuid = "00000000000000000000000000000000";
+            string pathGUID = AssetDatabase.AssetPathToGUID(assetPath);
 
-            return AssetDatabase.AssetPathToGUID(assetPath).Equals(emptyGuid);
+            return (pathGUID.Equals(emptyGuid) || string.IsNullOrEmpty(pathGUID));
         }
+
+        public static bool HasMaterialKeywords(GameObject obj, params string[] keywords)
+        {
+            SkinnedMeshRenderer smr = obj.GetComponent<SkinnedMeshRenderer>();
+
+            if (smr)
+            {
+                foreach (Material mat in smr.sharedMaterials)
+                {
+                    if (mat && Util.NameContainsKeywords(mat.name, keywords)) return true;
+                }
+            }
+
+            return false;
+        }        
 
         public static bool NameContainsKeywords(string name, params string[] keyword)
         {
             foreach (string k in keyword)
             {
-                int start = name.IndexOf(k);
+                int start = name.IndexOf(k, System.StringComparison.InvariantCultureIgnoreCase);
                 int after = start + k.Length;
 
                 if (start >= 0)
@@ -1105,9 +1141,227 @@ namespace Reallusion.Import
             return false;
         }
 
+
+
+
+
+
+        public static GameObject EditPrefabContents(GameObject prefabAsset)
+        {
+            GameObject prefabRoot;
+            string currentPrefabAssetPath = AssetDatabase.GetAssetPath(prefabAsset);
+            prefabRoot = PrefabUtility.LoadPrefabContents(currentPrefabAssetPath);
+            return prefabRoot;
+        }
+
+        public static void SaveAndUnloadPrefabContents(GameObject prefabAsset, GameObject prefabContents)
+        {
+            string currentPrefabAssetPath = AssetDatabase.GetAssetPath(prefabAsset);
+            PrefabUtility.SaveAsPrefabAsset(prefabContents, currentPrefabAssetPath, out bool success);
+            PrefabUtility.UnloadPrefabContents(prefabContents);
+        }
+
+
+
+
+        private static Editor MakeEditor(string guid)
+        {
+            Object o = AssetDatabase.LoadAssetAtPath(AssetDatabase.GUIDToAssetPath(guid), typeof(Object));
+            return Editor.CreateEditor(o);
+        }
+
+        const string prefsFailString = "xxxxxxxxxxxxxx";
+        const char delimiterChar = ',';
+
+        public static bool TrySerializeAssetToEditorPrefs(Object asset, string editorPrefsKey)
+        {            
+            int assetInstanceID = asset.GetInstanceID();
+            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(assetInstanceID, out string guid, out long localid))
+            {
+                string outString = assetInstanceID.ToString() + delimiterChar + guid.ToString() + delimiterChar + localid.ToString();
+                LogDetail("Instance ID: " + assetInstanceID.ToString());
+                LogDetail("GUID: " + guid.ToString());
+                LogDetail("localID: " + localid.ToString());
+                LogDetail("outString: " + outString);
+
+                EditorPrefs.SetString(editorPrefsKey, outString);
+                return true;
+            }
+            else
+            {
+                string path = AssetDatabase.GetAssetPath(assetInstanceID);
+                LogWarn("Cannot get GUID and ID for: " + asset.name + " at path: " + path);
+                EditorPrefs.SetString(editorPrefsKey, prefsFailString);
+                return false;
+            }
+        }
+
+        public static bool TryDeSerializeAssetFromEditorPrefs<T>(out Object asset, string editorPrefsKey)
+        {            
+            bool storedAsset = false;
+            string assetString = "";
+            if (EditorPrefs.HasKey(editorPrefsKey))
+            {
+                assetString = EditorPrefs.GetString(editorPrefsKey);
+                if (assetString == prefsFailString)
+                {
+                    LogInfo("Asset storage had failed - no asset to recover");
+                }
+                else
+                {
+                    storedAsset = true;
+                }
+            }
+            else
+            {
+                LogWarn("No asset reference found");
+            }
+
+            if (storedAsset)
+            {
+                string[] split = assetString.Split(new char[] { delimiterChar });
+
+                LogDetail("assetString: " + assetString);
+                LogDetail("split count: " + split.Length);                
+
+                if (split.Length == 3)
+                {
+                    int assetInstanceID = int.Parse(split[0]);
+                    string guid = split[1];
+                    long localid = long.Parse(split[2]);
+
+                    LogDetail("Found Instance ID: " + assetInstanceID.ToString());
+                    LogDetail("Found GUID: " + guid.ToString());
+                    LogDetail("Found localID: " + localid.ToString());
+
+                    Object[] potentials = AssetDatabase.LoadAllAssetRepresentationsAtPath(AssetDatabase.GUIDToAssetPath(guid));
+
+                    LogDetail(potentials.Length + " Sub objects found for GUID: " + guid);
+                    if (potentials.Length == 0)
+                    {
+                        Object potentialAsset = AssetDatabase.LoadAssetAtPath(AssetDatabase.GUIDToAssetPath(guid), typeof(Object));
+                        if (potentialAsset != null)
+                        {
+                            LogDetail(potentialAsset.GetType().Name);
+                            if (potentialAsset.GetType() == typeof(T))
+                            {
+                                LogDetail("Successfully found single asset: " + potentialAsset.GetType().Name + " Named: " + potentialAsset.name);
+                                asset = potentialAsset;
+                                return true;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        foreach (Object potential in potentials)
+                        {
+                            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(potential.GetInstanceID(), out string tryGuid, out long tryLocalid))
+                            {
+                                if (guid == tryGuid && tryLocalid == localid)
+                                {
+                                    if (potential.GetType() == typeof(T))
+                                    {
+                                        LogDetail("Successfully found embedded asset: " + potential.GetType().Name + " Named: " + potential.name);
+                                        asset = potential;
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            asset = null;
+            return false;
+        }
+
+        public static void SerializeBoolToEditorPrefs(bool value, string editorPrefsKey)
+        {
+            EditorPrefs.SetBool(editorPrefsKey, value);
+        }
+
+        public static bool TryDeSerializeBoolFromEditorPrefs(out bool value, string editorPrefsKey)
+        {
+            if (!EditorPrefs.HasKey(editorPrefsKey))
+            {
+                value = false;
+                return false;
+            }
+            else
+            {
+                value = EditorPrefs.GetBool(editorPrefsKey);
+                return true;
+            }
+        }
+
+        public static void SerializeFloatToEditorPrefs(float value, string editorPrefsKey)
+        {
+            EditorPrefs.SetFloat(editorPrefsKey, value);
+        }
+
+        public static bool TryDeSerializeFloatFromEditorPrefs(out float value, string editorPrefsKey)
+        {
+            if (!EditorPrefs.HasKey(editorPrefsKey))
+            {
+                value = 0f;
+                return false;
+            }
+            else
+            {
+                value = EditorPrefs.GetFloat(editorPrefsKey);
+                return true;
+            }
+        }
+
+        public static void SerializeStringToEditorPrefs(string value, string editorPrefsKey)
+        {
+            EditorPrefs.SetString(editorPrefsKey, value);
+        }
+
+        public static bool TryDeserializeStringFromEditorPrefs(out string value, string editorPrefsKey)
+        {
+            if (!EditorPrefs.HasKey(editorPrefsKey))
+            {
+                value = null;
+                return false;
+            }
+            else
+            {
+                value = EditorPrefs.GetString(editorPrefsKey);
+                return true;
+            }
+        }
+
+        public static void SerializeIntToEditorPrefs(int value, string editorPrefsKey)
+        {
+            EditorPrefs.SetInt(editorPrefsKey, value);
+        }
+
+        public static bool TryDeserializeIntFromEditorPrefs(out int value, string editorPrefsKey)
+        {
+            if (!EditorPrefs.HasKey(editorPrefsKey))
+            {
+                value = 0;
+                return false;
+            }
+            else
+            {
+                value = EditorPrefs.GetInt(editorPrefsKey);
+                return true;
+            }
+        }
+
         public static void LogInfo(string message)
         {
             if (LOG_LEVEL >= 2)
+            {
+                Debug.Log(message);
+            }
+        }
+
+        public static void LogDetail(string message)
+        {
+            if (LOG_LEVEL >= 3)
             {
                 Debug.Log(message);
             }
@@ -1132,6 +1386,27 @@ namespace Reallusion.Import
         public static void LogAlways(string message)
         {
             Debug.Log(message);
+        }
+
+
+        public static void TransferSkinnedMeshes(GameObject fromPrefab, GameObject toPrefab)
+        {
+            GameObject fromInstanceRoot = GameObject.Instantiate(fromPrefab);
+            GameObject toInstanceRoot = GameObject.Instantiate(toPrefab);
+            Transform[] toTransforms = toInstanceRoot.GetComponentsInChildren<Transform>();
+            SkinnedMeshRenderer[] renderers = fromInstanceRoot.GetComponentsInChildren<SkinnedMeshRenderer>();
+            foreach (SkinnedMeshRenderer smr in renderers)
+            {
+                GameObject newMesh = GameObject.Instantiate(smr.gameObject);
+                newMesh.transform.SetParent(toInstanceRoot.transform, true);
+                SkinnedMeshRenderer newSMR = newMesh.GetComponent<SkinnedMeshRenderer>();
+                for (int i = 0; i < newSMR.bones.Length; i++)
+                {
+                    string boneName = smr.bones[i].name;
+                    Transform toBone = System.Array.Find(toTransforms, t => t.name.Equals(boneName));
+                    if (toBone) newSMR.bones[i] = toBone;
+                }                
+            }
         }
     }    
 }

@@ -21,6 +21,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using System.IO;
 using System.Collections.Generic;
+using UnityEngine.AI;
 
 namespace Reallusion.Import
 {
@@ -238,9 +239,7 @@ namespace Reallusion.Import
         }
 
         public static bool ReplaceMesh(Object obj, Mesh mesh)
-        {            
-            bool animationMode = WindowManager.StopAnimationMode(obj);
-
+        {          
             bool replaced = false;
             Object o = null;
 
@@ -275,8 +274,6 @@ namespace Reallusion.Import
                 // only this works:
                 PrefabUtility.ApplyPrefabInstance(sceneRoot, InteractionMode.UserAction);
             }
-
-            WindowManager.RestartAnimationMode(animationMode);            
 
             return replaced;
         }
@@ -328,19 +325,20 @@ namespace Reallusion.Import
                     for (int i = 0; i < srcMesh.blendShapeCount; i++)
                     {
                         string name = srcMesh.GetBlendShapeName(i);
-
-                        int frameCount = srcMesh.GetBlendShapeFrameCount(i);
-                        for (int f = 0; f < frameCount; f++)
+                        if (dstMesh.GetBlendShapeIndex(name) == -1)
                         {
-                            float frameWeight = srcMesh.GetBlendShapeFrameWeight(i, f);
-                            srcMesh.GetBlendShapeFrameVertices(i, f, deltaVerts, deltaNormals, deltaTangents);
+                            int frameCount = srcMesh.GetBlendShapeFrameCount(i);
+                            for (int f = 0; f < frameCount; f++)
+                            {
+                                float frameWeight = srcMesh.GetBlendShapeFrameWeight(i, f);
+                                srcMesh.GetBlendShapeFrameVertices(i, f, deltaVerts, deltaNormals, deltaTangents);
 
-                            Vector3 deltaSum = Vector3.zero;
-                            for (int d = 0; d < srcMesh.vertexCount; d++) deltaSum += deltaVerts[d];
-                            //Debug.Log(name + ": deltaSum = " + deltaSum.ToString());
+                                Vector3 deltaSum = Vector3.zero;
+                                for (int d = 0; d < srcMesh.vertexCount; d++) deltaSum += deltaVerts[d];
 
-                            if (deltaSum.magnitude > 0.1f)
-                                dstMesh.AddBlendShapeFrame(name, frameWeight, deltaVerts, deltaNormals, deltaTangents);
+                                if (deltaSum.magnitude > 0.1f)
+                                    dstMesh.AddBlendShapeFrame(name, frameWeight, deltaVerts, deltaNormals, deltaTangents);
+                            }
                         }
                     }
                 }
@@ -399,13 +397,15 @@ namespace Reallusion.Import
                 for (int i = 0; i < srcMesh.blendShapeCount; i++)
                 {
                     string name = srcMesh.GetBlendShapeName(i);
-
-                    int frameCount = srcMesh.GetBlendShapeFrameCount(i);
-                    for (int f = 0; f < frameCount; f++)
+                    if (dstMesh.GetBlendShapeIndex(name) == -1)
                     {
-                        float frameWeight = srcMesh.GetBlendShapeFrameWeight(i, f);
-                        srcMesh.GetBlendShapeFrameVertices(i, f, bufVerts, bufNormals, bufTangents);
-                        dstMesh.AddBlendShapeFrame(name, frameWeight, bufVerts, bufNormals, bufTangents);
+                        int frameCount = srcMesh.GetBlendShapeFrameCount(i);
+                        for (int f = 0; f < frameCount; f++)
+                        {
+                            float frameWeight = srcMesh.GetBlendShapeFrameWeight(i, f);
+                            srcMesh.GetBlendShapeFrameVertices(i, f, bufVerts, bufNormals, bufTangents);
+                            dstMesh.AddBlendShapeFrame(name, frameWeight, bufVerts, bufNormals, bufTangents);
+                        }
                     }
                 }
             }
@@ -476,13 +476,15 @@ namespace Reallusion.Import
                     for (int i = 0; i < srcMesh.blendShapeCount; i++)
                     {
                         string name = srcMesh.GetBlendShapeName(i);
-
-                        int frameCount = srcMesh.GetBlendShapeFrameCount(i);
-                        for (int f = 0; f < frameCount; f++)
+                        if (dstMesh.GetBlendShapeIndex(name) == -1)
                         {
-                            float frameWeight = srcMesh.GetBlendShapeFrameWeight(i, f);
-                            srcMesh.GetBlendShapeFrameVertices(i, f, bufVerts, bufNormals, bufTangents);
-                            dstMesh.AddBlendShapeFrame(name, frameWeight, bufVerts, bufNormals, bufTangents);
+                            int frameCount = srcMesh.GetBlendShapeFrameCount(i);
+                            for (int f = 0; f < frameCount; f++)
+                            {
+                                float frameWeight = srcMesh.GetBlendShapeFrameWeight(i, f);
+                                srcMesh.GetBlendShapeFrameVertices(i, f, bufVerts, bufNormals, bufTangents);
+                                dstMesh.AddBlendShapeFrame(name, frameWeight, bufVerts, bufNormals, bufTangents);
+                            }
                         }
                     }
                 }
@@ -526,7 +528,7 @@ namespace Reallusion.Import
             }
 
             return null;
-        }
+        }        
 
         public static GameObject FindCharacterBone(GameObject gameObject, string name1, string name2)
         {
@@ -544,6 +546,24 @@ namespace Reallusion.Import
             }
 
             return null;
+        }
+
+        public static void FindCharacterBones(GameObject gameObject, List<GameObject> bones, params string [] searchNames)
+        {
+            if (gameObject && !bones.Contains(gameObject))
+            {
+                if (Util.NameContainsKeywords(gameObject.name, searchNames))
+                {
+                    bones.Add(gameObject);
+                }
+
+                int children = gameObject.transform.childCount;
+                for (int i = 0; i < children; i++)
+                {
+                    GameObject childObject = gameObject.transform.GetChild(i).gameObject;
+                    FindCharacterBones(childObject, bones, searchNames);
+                }
+            }
         }
 
         public static void CharacterOpenCloseMouth(Object obj)
@@ -826,23 +846,29 @@ namespace Reallusion.Import
                 for (int i = 0; i < srcMesh.blendShapeCount; i++)
                 {
                     string name = srcMesh.GetBlendShapeName(i);
-
-                    int frameCount = srcMesh.GetBlendShapeFrameCount(i);
-                    for (int f = 0; f < frameCount; f++)
+                    if (newMesh.GetBlendShapeIndex(name) == -1)
                     {
-                        float frameWeight = srcMesh.GetBlendShapeFrameWeight(i, f);
-                        srcMesh.GetBlendShapeFrameVertices(i, f, bufVerts, bufNormals, bufTangents);
-                        for (int vertIndex = 0; vertIndex < maxVerts; vertIndex++)
+                        int frameCount = srcMesh.GetBlendShapeFrameCount(i);
+                        for (int f = 0; f < frameCount; f++)
                         {
-                            int remappedIndex = remapping[vertIndex];
-                            if (remappedIndex >= 0)
+                            float frameWeight = srcMesh.GetBlendShapeFrameWeight(i, f);
+                            srcMesh.GetBlendShapeFrameVertices(i, f, bufVerts, bufNormals, bufTangents);
+                            for (int vertIndex = 0; vertIndex < maxVerts; vertIndex++)
                             {
-                                frameVerts[remappedIndex] = bufVerts[vertIndex];
-                                frameNormals[remappedIndex] = bufNormals[vertIndex];
-                                frameTangents[remappedIndex] = bufTangents[vertIndex];
+                                int remappedIndex = remapping[vertIndex];
+                                if (remappedIndex >= 0)
+                                {
+                                    frameVerts[remappedIndex] = bufVerts[vertIndex];
+                                    frameNormals[remappedIndex] = bufNormals[vertIndex];
+                                    frameTangents[remappedIndex] = bufTangents[vertIndex];
+                                }
                             }
+                            newMesh.AddBlendShapeFrame(name, frameWeight, frameVerts, frameNormals, frameTangents);
                         }
-                        newMesh.AddBlendShapeFrame(name, frameWeight, frameVerts, frameNormals, frameTangents);
+                    }
+                    else
+                    {
+                        Util.LogWarn("Blend shape: " + name + " has duplicate name, already exists in mesh!");
                     }
                 }
             }
@@ -960,12 +986,20 @@ namespace Reallusion.Import
             // finally copy and remap the triangle data last
             int[] triangles = new int[numNewTriangles];
             pointer = 0;
-            for (int tIndex = 0; tIndex < srcTriangles.Length; tIndex++)
+            // only consider the triangle lists from the included submeshes...
+            for (int s = 0; s < srcMesh.subMeshCount; s++)
             {
-                int vertIndex = srcTriangles[tIndex];
-                int remappedIndex = remapping[vertIndex];
-                if (remappedIndex >= 0)
-                    triangles[pointer++] = remappedIndex;
+                if (!indices.Contains(s))
+                {
+                    SubMeshDescriptor meshDesc = srcMesh.GetSubMesh(s);
+                    for (int tIndex = meshDesc.indexStart; tIndex < meshDesc.indexStart + meshDesc.indexCount; tIndex++)
+                    {                    
+                        int vertIndex = srcTriangles[tIndex];
+                        int remappedIndex = remapping[vertIndex];
+                        if (remappedIndex >= 0)
+                            triangles[pointer++] = remappedIndex;
+                    }
+                }
             }
             newMesh.triangles = triangles;
             // copy any blendshapes across
@@ -984,23 +1018,25 @@ namespace Reallusion.Import
                 for (int i = 0; i < srcMesh.blendShapeCount; i++)
                 {
                     string name = srcMesh.GetBlendShapeName(i);
-
-                    int frameCount = srcMesh.GetBlendShapeFrameCount(i);
-                    for (int f = 0; f < frameCount; f++)
+                    if (newMesh.GetBlendShapeIndex(name) == -1)
                     {
-                        float frameWeight = srcMesh.GetBlendShapeFrameWeight(i, f);
-                        srcMesh.GetBlendShapeFrameVertices(i, f, bufVerts, bufNormals, bufTangents);
-                        for (int vertIndex = 0; vertIndex < maxVerts; vertIndex++)
+                        int frameCount = srcMesh.GetBlendShapeFrameCount(i);
+                        for (int f = 0; f < frameCount; f++)
                         {
-                            int remappedIndex = remapping[vertIndex];
-                            if (remappedIndex >= 0)
+                            float frameWeight = srcMesh.GetBlendShapeFrameWeight(i, f);
+                            srcMesh.GetBlendShapeFrameVertices(i, f, bufVerts, bufNormals, bufTangents);
+                            for (int vertIndex = 0; vertIndex < maxVerts; vertIndex++)
                             {
-                                frameVerts[remappedIndex] = bufVerts[vertIndex];
-                                frameNormals[remappedIndex] = bufNormals[vertIndex];
-                                frameTangents[remappedIndex] = bufTangents[vertIndex];
+                                int remappedIndex = remapping[vertIndex];
+                                if (remappedIndex >= 0)
+                                {
+                                    frameVerts[remappedIndex] = bufVerts[vertIndex];
+                                    frameNormals[remappedIndex] = bufNormals[vertIndex];
+                                    frameTangents[remappedIndex] = bufTangents[vertIndex];
+                                }
                             }
+                            newMesh.AddBlendShapeFrame(name, frameWeight, frameVerts, frameNormals, frameTangents);
                         }
-                        newMesh.AddBlendShapeFrame(name, frameWeight, frameVerts, frameNormals, frameTangents);
                     }
                 }
             }
@@ -1071,17 +1107,32 @@ namespace Reallusion.Import
                 secondPass.EnableKeyword("BOOLEAN_SECONDPASS_ON");
                 secondPass.SetFloat("BOOLEAN_SECONDPASS", 1f);
                 Pipeline.ResetMaterial(secondPass);
-                
+
                 /*
                 aif.SaveAndReimport();
                 ais.SaveAndReimport();
                 */
-            }            
+            }
         }
 
-        public static GameObject Extract2PassHairMeshes(CharacterInfo info, GameObject prefabAsset, GameObject prefabInstance)
+        public struct TwoPassPair
         {
-            if (!prefabInstance) return null;
+            public Material sourceMaterial;
+            public Material firstPassMaterial;
+            public Material secondPassMaterial;
+
+            public TwoPassPair(Material s, Material a, Material b)
+            {
+                sourceMaterial = s;
+                firstPassMaterial = a;
+                secondPassMaterial = b;
+            }
+        }
+
+
+        public static bool Extract2PassHairMeshes(CharacterInfo info, GameObject prefabInstance)
+        {
+            if (!prefabInstance) return false;
 
             string name = info.name;
             string fbxFolder = info.folder;
@@ -1090,26 +1141,27 @@ namespace Reallusion.Import
 
             int processCount = 0;
 
+            Dictionary<Material, TwoPassPair> done = new Dictionary<Material, TwoPassPair>();
+
             Renderer[] renderers = prefabInstance.GetComponentsInChildren<Renderer>();
 
             foreach (Renderer r in renderers)
             {
-                bool hasHairMaterial = false;
-                bool isFacialObject = FacialProfileMapper.MeshHasFacialBlendShapes(r.gameObject);
+                bool hasHairMaterial = false;                
                 bool hasScalpMaterial = false;
                 int subMeshCount = 0;
                 int hairMeshCount = 0;
                 foreach (Material m in r.sharedMaterials)
                 {
+                    if (!m) continue;
+
                     subMeshCount++;
                     if (m.shader.name.iContains(Pipeline.SHADER_HQ_HAIR))
                     {
                         hasHairMaterial = true;
                         hairMeshCount++;
                     }
-                    else if (m.name.iContains("scalp_") ||
-                             m.name.iContains("_base_") ||
-                             m.name.iContains("_transparency"))
+                    else if (Util.NameContainsKeywords(m.name, "scalp", "base"))
                     {
                         hasScalpMaterial = true;
                     }
@@ -1117,6 +1169,8 @@ namespace Reallusion.Import
 
                 if (hasHairMaterial)
                 {
+                    bool isFacialObject = MeshIsFacialHair(r.gameObject);
+
                     List<int> indicesToRemove = new List<int>();
                     bool dontRemoveMaterials = false;
 
@@ -1128,29 +1182,16 @@ namespace Reallusion.Import
                     {
                         Material oldMat = r.sharedMaterials[index];
 
+                        if (!oldMat) continue;
+
                         if (oldMat.shader.name.iContains(Pipeline.SHADER_HQ_HAIR))
                         {
                             float alphaClipValue = 0.666f;
                             if (Pipeline.is3D) alphaClipValue = 0.55f;
-
-                            // set alpha clip and remap to values that work better 
-                            // with the two material system.
-                            if (isFacialObject)
-                            {                                                                
-                                oldMat.SetFloatIf("_AlphaClip", alphaClipValue);
-                                oldMat.SetFloatIf("_AlphaClip2", alphaClipValue);
-                                oldMat.SetFloatIf("_AlphaPower", 1.5f);
-                                oldMat.SetFloatIf("_ShadowClip", 0.5f);
-                                oldMat.SetFloatIf("_AlphaRemap", 1.0f);
-                            }
-                            else
-                            {
-                                oldMat.SetFloatIf("_AlphaClip", alphaClipValue);
-                                oldMat.SetFloatIf("_AlphaClip2", alphaClipValue);
-                                oldMat.SetFloatIf("_AlphaPower", 0.7f);
-                                oldMat.SetFloatIf("_ShadowClip", 0.5f);
-                                oldMat.SetFloatIf("_AlphaRemap", 1.0f);
-                            }
+                                                        
+                            oldMat.SetFloatIf("_AlphaClip", alphaClipValue);
+                            oldMat.SetFloatIf("_AlphaClip2", alphaClipValue);                            
+                            oldMat.SetFloatIf("_ShadowClip", 0.5f);                            
                         }
 
                         bool useTessellation = oldMat.shader.name.iContains("_Tessellation");
@@ -1184,26 +1225,35 @@ namespace Reallusion.Import
                             // - set skinnedMeshRenderer mesh to extracted mesh
                             smr.sharedMesh = newMesh;
                             Material[] sharedMaterials = new Material[2];
-                            // - add first pass hair shader material
-                            // - add second pass hair shader material
-                            Material firstPassTemplate = Util.FindCustomMaterial(Pipeline.MATERIAL_HQ_HAIR_1ST_PASS, useTessellation);
-                            Material secondPassTemplate = Util.FindCustomMaterial(Pipeline.MATERIAL_HQ_HAIR_2ND_PASS, useTessellation);
-                            Material firstPass = new Material(firstPassTemplate);
-                            Material secondPass = new Material(secondPassTemplate);                            
-                            CopyMaterialParameters(oldMat, firstPass);
-                            CopyMaterialParameters(oldMat, secondPass);
-                            FixHDRP2PassMaterials(firstPass, secondPass);
-                            // save the materials to the asset database.
-                            AssetDatabase.CreateAsset(firstPass, Path.Combine(materialFolder, oldMat.name + "_1st_Pass.mat"));
-                            AssetDatabase.CreateAsset(secondPass, Path.Combine(materialFolder, oldMat.name + "_2nd_Pass.mat"));
-                            sharedMaterials[0] = firstPass;
-                            sharedMaterials[1] = secondPass;
+                            if (done.ContainsKey(oldMat))
+                            {
+                                sharedMaterials[0] = done[oldMat].firstPassMaterial;
+                                sharedMaterials[1] = done[oldMat].secondPassMaterial;
+                            }
+                            else
+                            {
+                                // - add first pass hair shader material
+                                // - add second pass hair shader material
+                                Material firstPassTemplate = Util.FindCustomMaterial(Pipeline.MATERIAL_HQ_HAIR_1ST_PASS, useTessellation);
+                                Material secondPassTemplate = Util.FindCustomMaterial(Pipeline.MATERIAL_HQ_HAIR_2ND_PASS, useTessellation);
+                                Material firstPass = new Material(firstPassTemplate);
+                                Material secondPass = new Material(secondPassTemplate);
+                                CopyMaterialParameters(oldMat, firstPass);
+                                CopyMaterialParameters(oldMat, secondPass);
+                                FixHDRP2PassMaterials(firstPass, secondPass);
+                                // save the materials to the asset database.
+                                AssetDatabase.CreateAsset(firstPass, Path.Combine(materialFolder, oldMat.name + "_1st_Pass.mat"));
+                                AssetDatabase.CreateAsset(secondPass, Path.Combine(materialFolder, oldMat.name + "_2nd_Pass.mat"));
+                                sharedMaterials[0] = firstPass;
+                                sharedMaterials[1] = secondPass;
+                                done.Add(oldMat, new TwoPassPair(oldMat, firstPass, secondPass));
+                                // call the fix again as Unity reverts some settings when first saving...
+                                FixHDRP2PassMaterials(firstPass, secondPass);
+                            }
                             // add the 1st and 2nd pass materials to the mesh renderer
                             // a single submesh with multiple materials will render itself again with each material
                             // effectively acting as a multi-pass shader which fully complies with any SRP batching.
                             smr.sharedMaterials = sharedMaterials;
-                            // call the fix again as Unity reverts some settings when first saving...
-                            FixHDRP2PassMaterials(firstPass, secondPass);
 
                             indicesToRemove.Add(index);
                             subMeshCount--;
@@ -1213,28 +1263,36 @@ namespace Reallusion.Import
                         {
                             Util.LogInfo("Leaving subMesh(" + index.ToString() + ") in Object: " + oldObj.name);
 
-                            Material[] sharedMaterials = new Material[2];
-                            // - add first pass hair shader material
-                            // - add second pass hair shader material
-                            
-                            Material firstPassTemplate = Util.FindCustomMaterial(Pipeline.MATERIAL_HQ_HAIR_1ST_PASS, useTessellation);
-                            Material secondPassTemplate = Util.FindCustomMaterial(Pipeline.MATERIAL_HQ_HAIR_2ND_PASS, useTessellation);
-                            Material firstPass = new Material(firstPassTemplate);
-                            Material secondPass = new Material(secondPassTemplate);                            
-                            CopyMaterialParameters(oldMat, firstPass);
-                            CopyMaterialParameters(oldMat, secondPass);
-                            FixHDRP2PassMaterials(firstPass, secondPass);
-                            // save the materials to the asset database.   
-                            AssetDatabase.CreateAsset(firstPass, Path.Combine(materialFolder, oldMat.name + "_1st_Pass.mat"));
-                            AssetDatabase.CreateAsset(secondPass, Path.Combine(materialFolder, oldMat.name + "_2nd_Pass.mat"));
-                            sharedMaterials[0] = firstPass;
-                            sharedMaterials[1] = secondPass;
+                            Material[] sharedMaterials = new Material[2];                            
+                            if (done.ContainsKey(oldMat))
+                            {
+                                sharedMaterials[0] = done[oldMat].firstPassMaterial;
+                                sharedMaterials[1] = done[oldMat].secondPassMaterial;
+                            }
+                            else
+                            {
+                                // - add first pass hair shader material
+                                // - add second pass hair shader material
+                                Material firstPassTemplate = Util.FindCustomMaterial(Pipeline.MATERIAL_HQ_HAIR_1ST_PASS, useTessellation);
+                                Material secondPassTemplate = Util.FindCustomMaterial(Pipeline.MATERIAL_HQ_HAIR_2ND_PASS, useTessellation);
+                                Material firstPass = new Material(firstPassTemplate);
+                                Material secondPass = new Material(secondPassTemplate);
+                                CopyMaterialParameters(oldMat, firstPass);
+                                CopyMaterialParameters(oldMat, secondPass);
+                                FixHDRP2PassMaterials(firstPass, secondPass);
+                                // save the materials to the asset database.   
+                                AssetDatabase.CreateAsset(firstPass, Path.Combine(materialFolder, oldMat.name + "_1st_Pass.mat"));
+                                AssetDatabase.CreateAsset(secondPass, Path.Combine(materialFolder, oldMat.name + "_2nd_Pass.mat"));
+                                sharedMaterials[0] = firstPass;
+                                sharedMaterials[1] = secondPass;
+                                done.Add(oldMat, new TwoPassPair(oldMat, firstPass, secondPass));
+                                // call the fix again as Unity reverts some settings when first saving...
+                                FixHDRP2PassMaterials(firstPass, secondPass);
+                            }
                             // add the 1st and 2nd pass materials to the mesh renderer
                             // a single submesh with multiple materials will render itself again with each material
                             // effectively acting as a multi-pass shader which fully complies with any SRP batching.
-                            oldSmr.sharedMaterials = sharedMaterials;
-                            // call the fix again as Unity reverts some settings when first saving...
-                            FixHDRP2PassMaterials(firstPass, secondPass);
+                            oldSmr.sharedMaterials = sharedMaterials;                            
                             // as we have replaced the materials completely, don't remove any later when removing any submeshes...
                             dontRemoveMaterials = true;
                             processCount++;
@@ -1276,20 +1334,10 @@ namespace Reallusion.Import
                     }
                 }                
             }
-            
-            if (prefabInstance && processCount > 0)
-            {
-                Util.LogInfo("Updating character prefab...");
-                // save the clone as the prefab for this character         
-                string prefabPath = AssetDatabase.GetAssetPath(prefabAsset);
-                prefabAsset = PrefabUtility.SaveAsPrefabAsset(prefabInstance, prefabPath);
-            }
-            else
-            {
-                Util.LogInfo("Nothing to process (or already processed)...");
-            }            
 
-            return prefabAsset;
+            if (processCount > 0) return true;
+
+            return false;
         }
 
         public struct SmoothVertData
@@ -1569,5 +1617,42 @@ namespace Reallusion.Import
             }
         }
 
+        public static bool MeshHasJawWeights(GameObject obj)
+        {
+            SkinnedMeshRenderer smr = obj.GetComponent<SkinnedMeshRenderer>();
+
+            if (smr)
+            {
+                foreach (Transform bone in smr.bones)
+                {
+                    if (bone.gameObject.name.iContains("JawRoot"))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        public static bool MeshIsFacialHair(GameObject obj)
+        {
+            // if it has facial blend shapes...
+            if (FacialProfileMapper.MeshHasFacialBlendShapes(obj))
+            {
+                if (Util.HasMaterialKeywords(obj, "scalp"))
+                {
+                    return false;
+                }
+                else if (Util.HasMaterialKeywords(obj, "base", "brow", "beard",
+                                                  "mustache", "goatee", "stubble",
+                                                  "bushy", "sword"))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }

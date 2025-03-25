@@ -22,6 +22,8 @@ using UnityEngine;
 using System;
 using System.IO;
 using UnityEditor.Animations;
+using System.Reflection;
+using System.Linq;
 
 namespace Reallusion.Import
 {
@@ -55,69 +57,112 @@ namespace Reallusion.Import
             { "RL_G6_Standard_Series", BaseGeneration.G1 },
             { "NonStdLookAtDataCopyFromCCBase", BaseGeneration.ActorCore },
             { "ActorBuild", BaseGeneration.ActorBuild },
-            { "ActorScan", BaseGeneration.ActorCore }
+            { "ActorScan", BaseGeneration.ActorCore },
+            { "AccuRig", BaseGeneration.ActorBuild }
         };
+
+        public static bool CharacterContainsBones(Transform[] bones, string[] boneNames)
+        {
+            foreach (string n in boneNames)
+            {
+                bool found = false;
+                foreach (Transform b in bones)
+                {
+                    if (b.name == n)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false;
+            }
+            return true;
+        }
         
         public static BaseGeneration GetCharacterGeneration(GameObject fbx, string generationString)
         {
-            if (!string.IsNullOrEmpty(generationString))
+            if (fbx)
             {
-                if (GENERATION_MAP.TryGetValue(generationString, out BaseGeneration gen)) return gen;
-            }
-            else
-            {
-                if (fbx)
-                {                    
-                    Transform[] children = fbx.transform.GetComponentsInChildren<Transform>(true);
-                    foreach (Transform child in children)
-                    {
-                        string objectName = child.gameObject.name;
+                Transform[] children = fbx.transform.GetComponentsInChildren<Transform>(true);
 
-                        if (objectName.iContains("RootNode_0_")) return BaseGeneration.ActorCore;
-                        if (objectName.iContains("CC_Base_L_Pinky3")) return BaseGeneration.G3;
-                        if (objectName.iContains("pinky_03_l")) return BaseGeneration.GameBase;
-                        if (objectName.iContains("CC_Base_L_Finger42")) return BaseGeneration.G1;
-                        if (objectName.iContains("RL_BoneRoot"))
+                if (!string.IsNullOrEmpty(generationString))
+                {
+                    if (GENERATION_MAP.TryGetValue(generationString, out BaseGeneration gen))
+                    {
+                        // some ActorScan characters are really GameBase
+                        if (CharacterContainsBones(children, new string[] { "head", "pelvis", "spine_02" }))
+                        {                            
+                            gen = BaseGeneration.GameBase;
+                        }
+
+                        return gen;
+                    }
+                }
+                
+                // check game base
+                if (CharacterContainsBones(children, new string[] { "head", "pelvis", "spine_02" }))
+                    return BaseGeneration.GameBase;
+
+                foreach (Transform child in children)
+                {
+                    string objectName = child.gameObject.name;
+
+                    if (objectName.iContains("RootNode_0_")) return BaseGeneration.ActorCore;
+                    if (objectName.iContains("CC_Base_L_Pinky3")) return BaseGeneration.G3;
+                    if (objectName.iContains("pinky_03_l")) return BaseGeneration.GameBase;
+                    if (objectName.iContains("CC_Base_L_Finger42")) return BaseGeneration.G1;
+                    if (objectName.iContains("RL_BoneRoot"))
+                    {
+                        if (child.Find("CC_Base_Hip"))
                         {
-                            if (child.Find("CC_Base_Hip"))
-                            {
-                                Material acMat = GetActorCoreSingleMaterial(fbx);
-                                if (acMat) return BaseGeneration.ActorCore;
-                                else return BaseGeneration.G3;
-                            }
+                            Material acMat = GetActorCoreSingleMaterial(fbx);
+                            if (acMat) return BaseGeneration.ActorCore;
+                            else return BaseGeneration.G3;
                         }
                     }
+                }
 
-                    foreach (Transform child in children)
+                foreach (Transform child in children)
+                {
+                    string objectName = child.gameObject.name;
+
+                    if (objectName.iContains("CC_Game_Body") || objectName.iContains("CC_Game_Tongue"))
                     {
-                        string objectName = child.gameObject.name;
+                        return BaseGeneration.GameBase;
+                    }
 
-                        if (objectName.iContains("CC_Game_Body") || objectName.iContains("CC_Game_Tongue"))
+                    if (objectName == "CC_Base_Body")
+                    {
+                        Renderer renderer = child.GetComponent<Renderer>();
+                        foreach (Material mat in renderer.sharedMaterials)
                         {
-                            return BaseGeneration.GameBase;
-                        }
+                            if (!mat) continue;
 
-                        if (objectName == "CC_Base_Body")
-                        {
-                            Renderer renderer = child.GetComponent<Renderer>();
-                            foreach (Material mat in renderer.sharedMaterials)
-                            {
-                                string materialName = mat.name;
-                                if (materialName.iContains("Skin_Body"))
-                                    return BaseGeneration.G1;
-                                else if (materialName.iContains("Std_Skin_Body"))
-                                    return BaseGeneration.G3;
-                                else if (materialName.iContains("ga_skin_body"))
-                                    return BaseGeneration.GameBase;
-                            }
+                            string materialName = mat.name;
+                            if (materialName.iContains("Skin_Body"))
+                                return BaseGeneration.G1;
+                            else if (materialName.iContains("Std_Skin_Body"))
+                                return BaseGeneration.G3;
+                            else if (materialName.iContains("ga_skin_body"))
+                                return BaseGeneration.GameBase;
                         }
                     }
-                }                
+                }
             }
             return BaseGeneration.Unknown;
         }
 
-        public static void HumanoidImportSettings(GameObject fbx, ModelImporter importer, CharacterInfo info)
+        public static void ForceLegacyBlendshapeNormals(ModelImporter importer)
+        {
+            string pName = "legacyComputeAllNormalsFromSmoothingGroupsWhenMeshHasBlendShapes";
+            PropertyInfo prop = importer.GetType().GetProperty(pName, 
+                                                                BindingFlags.Instance | 
+                                                                BindingFlags.NonPublic | 
+                                                                BindingFlags.Public);
+            prop.SetValue(importer, true);
+        }
+
+        public static void HumanoidImportSettings(GameObject fbx, ModelImporter importer, CharacterInfo info, Avatar avatar = null)
         {            
             // import normals to avoid mesh smoothing issues            
             // importing blend shape normals gives disasterously bad results, they need to be recalculated,
@@ -127,12 +172,12 @@ namespace Reallusion.Import
             switch(importSet)
             {
                 case 0: // From CC3/4
-                    importer.importNormals = ModelImporterNormals.Calculate;
+                    importer.importNormals = ModelImporterNormals.Import;
                     importer.importBlendShapes = true;
-                    importer.importBlendShapeNormals = ModelImporterNormals.Calculate;                    
+                    importer.importBlendShapeNormals = ModelImporterNormals.Import;                    
                     importer.normalCalculationMode = ModelImporterNormalCalculationMode.AreaAndAngleWeighted;                    
-                    importer.normalSmoothingSource = ModelImporterNormalSmoothingSource.FromAngle;
-                    importer.normalSmoothingAngle = 120f;
+                    importer.normalSmoothingSource = ModelImporterNormalSmoothingSource.PreferSmoothingGroups;
+                    importer.normalSmoothingAngle = 60f;
                     break;
                 case 1: // From Blender
                     importer.importNormals = ModelImporterNormals.Import;
@@ -140,13 +185,16 @@ namespace Reallusion.Import
                     importer.importBlendShapeNormals = ModelImporterNormals.Import;
                     importer.normalCalculationMode = ModelImporterNormalCalculationMode.AreaAndAngleWeighted;                    
                     importer.normalSmoothingSource = ModelImporterNormalSmoothingSource.PreferSmoothingGroups;
-                    importer.normalSmoothingAngle = 120f;
+                    importer.normalSmoothingAngle = 60f;
                     break;                
             }
             importer.importTangents = ModelImporterTangents.CalculateMikk;
             importer.generateAnimations = ModelImporterGenerateAnimations.GenerateAnimations;
             importer.animationType = ModelImporterAnimationType.Human;
-            importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;            
+            importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+            importer.keepQuads = false;
+            importer.weldVertices = true;
+            ForceLegacyBlendshapeNormals(importer);
 
             importer.autoGenerateAvatarMappingIfUnspecified = true;
             
@@ -168,21 +216,31 @@ namespace Reallusion.Import
                 return;
             }
 
-            HumanDescription human = importer.humanDescription;
-            Func<string, string, HumanBone> Bone = (humanName, boneName) => new HumanBone()
+            if (avatar)
             {
-                humanName = humanName,
-                boneName = boneName
-            };
-            List<HumanBone> boneList = new List<HumanBone>();
+                importer.avatarSetup = ModelImporterAvatarSetup.CopyFromOther;
 
-            #region HumanBoneDescription
-            if (info.Generation == BaseGeneration.G3 ||
-                info.Generation == BaseGeneration.G3Plus ||
-                info.Generation == BaseGeneration.ActorCore ||
-                info.Generation == BaseGeneration.ActorBuild)
+                importer.sourceAvatar = avatar;
+            }
+            else
             {
-                boneList = new List<HumanBone> {                 
+                importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+
+                HumanDescription human = importer.humanDescription;
+                Func<string, string, HumanBone> Bone = (humanName, boneName) => new HumanBone()
+                {
+                    humanName = humanName,
+                    boneName = boneName
+                };
+                List<HumanBone> boneList = new List<HumanBone>();
+
+                #region HumanBoneDescription
+                if (info.Generation == BaseGeneration.G3 ||
+                    info.Generation == BaseGeneration.G3Plus ||
+                    info.Generation == BaseGeneration.ActorCore ||
+                    info.Generation == BaseGeneration.ActorBuild)
+                {
+                    boneList = new List<HumanBone> {
                         Bone("Chest", "CC_Base_Spine01"),
                         Bone("Head", "CC_Base_Head"),
                         Bone("Hips", "CC_Base_Hip"),
@@ -239,10 +297,10 @@ namespace Reallusion.Import
                         Bone("Spine", "CC_Base_Waist"),
                         Bone("UpperChest", "CC_Base_Spine02"),
                     };
-            }
-            else if (info.Generation == BaseGeneration.G1)
-            {
-                boneList = new List<HumanBone> {
+                }
+                else if (info.Generation == BaseGeneration.G1)
+                {
+                    boneList = new List<HumanBone> {
                         Bone("Chest", "CC_Base_Spine01"),
                         Bone("Head", "CC_Base_Head"),
                         Bone("Hips", "CC_Base_Hip"),
@@ -299,10 +357,10 @@ namespace Reallusion.Import
                         Bone("Spine", "CC_Base_Waist"),
                         Bone("UpperChest", "CC_Base_Spine02"),
                     };
-            }
-            else if (info.Generation == BaseGeneration.GameBase)
-            {
-                boneList = new List<HumanBone> {
+                }
+                else if (info.Generation == BaseGeneration.GameBase)
+                {
+                    boneList = new List<HumanBone> {
                         Bone("Chest", "spine_02"),
                         Bone("Head", "head"),
                         Bone("Hips", "pelvis"),
@@ -359,54 +417,93 @@ namespace Reallusion.Import
                         Bone("Spine", "spine_01"),
                         Bone("UpperChest", "spine_03"),
                     };
-            }
-
-            // clean up bone list for missing bones (from bone LOD exports)
-            for (int b = 0; b < boneList.Count; b++)
-            {
-                if (Util.FindChildRecursive(fbx.transform, boneList[b].boneName) == null)
-                {
-                    //Debug.LogWarning("Missing bone: " + boneList[b].boneName);
-                    boneList.RemoveAt(b--);
                 }
-            }
-            
-            if (boneList.Count > 0)
-                human.human = boneList.ToArray();
 
-            #endregion
-
-            for (int i = 0; i < human.human.Length; ++i)
-            {
-                human.human[i].limit.useDefaultValues = true;
-            }
-
-            human.upperArmTwist = 0.5f;
-            human.lowerArmTwist = 0.5f;
-            human.upperLegTwist = 0.5f;
-            human.lowerLegTwist = 0.5f;
-            human.armStretch = 0.05f;
-            human.legStretch = 0.05f;
-            human.feetSpacing = 0.0f;
-            human.hasTranslationDoF = true;            
-
-            if (info.JsonData != null)
-            {
-                Transform[] transforms = fbx.GetComponentsInChildren<Transform>();
-                SkeletonBone[] bones = new SkeletonBone[transforms.Length];
-                for (int i = 0; i < transforms.Length; i++)
+                // clean up bone list for missing bones (from bone LOD exports)
+                for (int b = 0; b < boneList.Count; b++)
                 {
-                    bones[i].name = transforms[i].name;
-                    bones[i].position = transforms[i].localPosition;
-                    bones[i].rotation = transforms[i].localRotation;
-                    bones[i].scale = transforms[i].localScale;
+                    if (Util.FindChildRecursive(fbx.transform, boneList[b].boneName) == null)
+                    {
+                        //Debug.LogWarning("Missing bone: " + boneList[b].boneName);
+                        boneList.RemoveAt(b--);
+                    }
                 }
-                human.skeleton = bones;
-            }
 
-            importer.humanDescription = human;
+                if (boneList.Count > 0)
+                    human.human = boneList.ToArray();
+
+                #endregion
+
+                for (int i = 0; i < human.human.Length; ++i)
+                {
+                    human.human[i].limit.useDefaultValues = true;
+                }
+
+                human.upperArmTwist = 0.5f;
+                human.lowerArmTwist = 0.5f;
+                human.upperLegTwist = 0.5f;
+                human.lowerLegTwist = 0.5f;
+                human.armStretch = 0.05f;
+                human.legStretch = 0.05f;
+                human.feetSpacing = 0.0f;
+                human.hasTranslationDoF = true;
+
+                if (info.JsonData != null)
+                {
+                    Transform[] transforms = fbx.GetComponentsInChildren<Transform>();
+                    SkeletonBone[] bones = new SkeletonBone[transforms.Length];
+                    for (int i = 0; i < transforms.Length; i++)
+                    {
+                        bones[i].name = transforms[i].name;
+                        bones[i].position = transforms[i].localPosition;
+                        bones[i].rotation = transforms[i].localRotation;
+                        bones[i].scale = transforms[i].localScale;
+                    }
+                    human.skeleton = bones;
+                }
+
+                importer.humanDescription = human;
+            }
         }
-        
+
+        public static AnimatorController CreateDefaultAnimator(GameObject fbx, string assetPath)
+        {
+            string animatorPath = assetPath + "/" + fbx.name + "_default_animator.controller";
+
+            if (File.Exists(animatorPath))
+            {
+                UnityEngine.Object asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(animatorPath);
+                if (asset.GetType() == typeof(AnimatorController))
+                {                    
+                    return AssetDatabase.LoadAssetAtPath<AnimatorController>(animatorPath);
+                }
+            }
+
+            string[] folders = new string[] { "Packages" };
+            string animatorName = "RL_Default_Animator_Controller";
+
+            string[] guids = AssetDatabase.FindAssets(animatorName, folders);
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                string name = Path.GetFileNameWithoutExtension(path);
+                if (name.iEquals(animatorName))
+                {   
+                    UnityEngine.Object asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
+                    if (asset.GetType() == typeof(AnimatorController))
+                    {
+                        if (AssetDatabase.CopyAsset(path, animatorPath))
+                        {
+                            return AssetDatabase.LoadAssetAtPath<AnimatorController>(animatorPath);
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+
+
         public static AnimatorController AutoCreateAnimator(GameObject fbx, string assetPath, ModelImporter importer)
         {
             string animatorPath = Path.GetDirectoryName(assetPath) + "/" + fbx.name + "_animator.controller";
@@ -424,18 +521,43 @@ namespace Reallusion.Import
                     AnimatorStateMachine stateMachine = controller.layers[0].stateMachine;
 
                     UnityEngine.Object[] assets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+                    AnimationClip TPoseClip = null;
+                    AnimationClip previewClip = null;
+                    AnimationClip foundClip = null;
                     foreach (UnityEngine.Object obj in assets)
                     {
-                        AnimationClip clip = obj as AnimationClip;
-                        clip = AnimRetargetGUI.TryGetRetargetedAnimationClip(fbx, clip);
-
-                        if (clip)
+                        if (obj.GetType() == typeof(AnimationClip))
                         {
-                            if (clip.name.iContains("__preview__") || clip.name.iContains("t-pose"))
-                                continue;
+                            AnimationClip clip = obj as AnimationClip;
+                            clip = AnimRetargetGUI.TryGetRetargetedAnimationClip(fbx, clip);
+                            if (clip)
+                            {
+                                if (!clip.name.iContains("__preview__") && clip.name.iContains("t-pose"))
+                                {
+                                    TPoseClip = clip;
+                                    continue;
+                                }
 
-                            controller.AddMotion(clip, 0);
+                                if (clip.name.iContains("__preview__"))
+                                {
+                                    previewClip = clip;
+                                    continue;
+                                }     
+                                
+                                controller.AddMotion(clip, 0);
+                                foundClip = clip;
+                                break;                                
+                            }
                         }
+                    }
+
+                    if (!foundClip && TPoseClip)
+                    {
+                        controller.AddMotion(TPoseClip, 0);
+                    }
+                    else if (!foundClip && previewClip)
+                    {
+                        controller.AddMotion(previewClip, 0);
                     }
 
                     if (AssetDatabase.WriteImportSettingsIfDirty(assetPath))
@@ -494,10 +616,10 @@ namespace Reallusion.Import
 
             if (changed)
             {
-                importer.clipAnimations = animations;
+                importer.clipAnimations = animations;                
                 if (forceUpdate)
                 {
-                    AssetDatabase.WriteImportSettingsIfDirty(characterInfo.path);
+                    AssetDatabase.WriteImportSettingsIfDirty(importer.assetPath);
                     AssetDatabase.SaveAssets();
                     AssetDatabase.Refresh();
                 }
@@ -506,96 +628,192 @@ namespace Reallusion.Import
             characterInfo.animationSetup = true;
         }
 
-        public static void SetAnimationImport(CharacterInfo info, GameObject fbx)
-        {            
-            ModelImporter importer = (ModelImporter)AssetImporter.GetAtPath(info.path);                        
-            SetupAnimation(importer, info, true);            
-            ApplyAnimatorController(info, AutoCreateAnimator(fbx, info.path, importer));
+        public static void ResetFbxAnimator(GameObject fbx)
+        {
+            Animator animator = fbx.GetComponentInChildren<Animator>();
+            if (animator)
+            {
+                if (animator.runtimeAnimatorController != null)
+                {
+                    animator.runtimeAnimatorController = null;
+                }
+            }
         }
 
-        public static void ApplyAnimatorController(CharacterInfo info, AnimatorController controller)
+        public static void DoAnimationImport(CharacterInfo info)
+        {
+            string path = info.path;
+            ResetFbxAnimator(info.Fbx);
+            ModelImporter importer = (ModelImporter)AssetImporter.GetAtPath(path);
+            HumanoidImportSettings(info.Fbx, importer, info);
+            SetupAnimation(importer, info, true);            
+
+            Avatar sourceAvatar = info.GetCharacterAvatar();
+
+            List<string> motionGuids = info.GetMotionGuids();
+            if (motionGuids.Count > 0)
+            {
+                foreach (string guid in motionGuids)
+                {
+                    string assetPath = AssetDatabase.GUIDToAssetPath(guid);
+                    DoMotionImport(info, sourceAvatar, assetPath);
+                }
+            }
+        }
+
+        public static void DoMotionImport(CharacterInfo info, Avatar sourceAvatar, string motionFbxPath)
+        {            
+            ModelImporter importer = (ModelImporter)AssetImporter.GetAtPath(motionFbxPath);            
+            HumanoidImportSettings(null, importer, info, sourceAvatar);
+            SetupAnimation(importer, info, true);            
+        }      
+
+        public static void AddDefaultAnimatorController(CharacterInfo info, GameObject prefab)
         {
             string prefabFolder = Util.CreateFolder(info.folder, Importer.PREFABS_FOLDER);
             string prefabPath = Path.Combine(prefabFolder, info.name + ".prefab");
             string prefabBakedPath = Path.Combine(prefabFolder, info.name + Importer.BAKE_SUFFIX + ".prefab");
 
-            if (controller)
+            AnimatorController defaultController = CreateDefaultAnimator(info.Fbx, info.folder);
+            Animator animator = prefab.GetComponent<Animator>();
+
+            if (!animator || !defaultController) return;            
+            
+            animator.runtimeAnimatorController = defaultController;
+            animator.applyRootMotion = true;
+            animator.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
+                
+            // replace baked prefab animator too
+            if (File.Exists(prefabBakedPath))
             {
-                if (File.Exists(prefabPath))
+                GameObject prefabBaked = AssetDatabase.LoadAssetAtPath<GameObject>(prefabBakedPath);
+                animator = prefabBaked.GetComponent<Animator>();
+
+                if (animator)
                 {
-                    GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-                    Animator animator = prefab.GetComponent<Animator>();
-
-                    if (animator && !animator.runtimeAnimatorController)
-                    {
-                        animator.runtimeAnimatorController = controller;
-                        animator.applyRootMotion = true;
-                        animator.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
-                    }
-                }
-
-                if (File.Exists(prefabBakedPath))
-                {
-                    GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabBakedPath);
-                    Animator animator = prefab.GetComponent<Animator>();
-
-                    if (animator && !animator.runtimeAnimatorController)
-                    {
-                        animator.runtimeAnimatorController = controller;
-                        animator.applyRootMotion = true;
-                        animator.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
-                    }
+                    animator.runtimeAnimatorController = defaultController;
+                    animator.applyRootMotion = true;
+                    animator.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
                 }
             }
         }
 
-        public static GameObject CreatePrefabFromFbx(CharacterInfo info, GameObject fbx, out GameObject sceneInstance)
+        public static string InitCharacterPrefab(CharacterInfo info)
         {            
+            string prefabFolder = Util.CreateFolder(info.folder, Importer.PREFABS_FOLDER);            
+            string prefabPath = Path.Combine(prefabFolder, info.name + ".prefab");
+
+#if UNITY_2023_OR_NEWER
+            // Unity 2023.1.1 to 2023.1.5 crashes if saving a new instance over an existing prefab, so delete it first
+#if UNITY_2023_1_6_OR_NEWER
+            // prefab bug fixed in 2023.1.6
+#else
+            bool assetExists = Util.AssetPathExists(prefabPath);
+            if (assetExists)
+            {
+                AssetDatabase.DeleteAsset(prefabPath);
+                AssetDatabase.Refresh();
+            }
+#endif
+#endif            
+
+            // remove any animator controllers set in the fbx
+            ResetFbxAnimator(info.Fbx);
+
+            return prefabPath;
+        }
+
+        public static GameObject InstantiateModelFromSource(CharacterInfo info, GameObject fbx, string assetPath)
+        {
+            GameObject prefabInstance = null;
+
             if (info.path.iContains("_lod") && CountLODs(fbx) > 1)
             {
-                return CreateOneLODPrefabFromModel(info, fbx, "", out sceneInstance);
+                prefabInstance = CreateLODInstanceFromModel(info, fbx);
             }
             else
             {
-                return CreatePrefabFromModel(info, fbx, out sceneInstance);
+                prefabInstance = CreateInstanceFromModel(info, fbx);
             }
+
+            GameObject prefab = PrefabUtility.SaveAsPrefabAssetAndConnect(prefabInstance, assetPath, InteractionMode.AutomatedAction);
+            return prefabInstance;
         }
 
         /// <summary>
         ///     Note: no longer deletes the clone. Use SaveAndRemoveScenePrefab() to finalize the prefab.
         /// </summary>
-        public static GameObject CreatePrefabFromModel(CharacterInfo info, GameObject fbx, out GameObject sceneInstance)
-        {
-            // Create a Prefab folder:          
-            string prefabFolder = Util.CreateFolder(info.folder, Importer.PREFABS_FOLDER);
-            //string namedPrefabFolder = Util.CreateFolder(prefabFolder, info.name);
-            string prefabPath = Path.Combine(prefabFolder, info.name + ".prefab");
-            string animatorControllerPath = Path.Combine(info.folder, info.name + "_animator.controller");            
-
-            // Apply to the scene:
-            sceneInstance = PrefabUtility.InstantiatePrefab(fbx) as GameObject;            
-
-            // Apply Animator:
-            if (!sceneInstance.GetComponent<Animator>().runtimeAnimatorController)
-            {
-                if (File.Exists(animatorControllerPath))
-                    sceneInstance.GetComponent<Animator>().runtimeAnimatorController = 
-                            AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(animatorControllerPath);
-
-                sceneInstance.GetComponent<Animator>().applyRootMotion = true;
-                sceneInstance.GetComponent<Animator>().cullingMode = AnimatorCullingMode.CullUpdateTransforms;                
-            }
-
-            GameObject prefab = PrefabUtility.SaveAsPrefabAsset(sceneInstance, prefabPath);
-
-            return prefab;
+        public static GameObject CreateInstanceFromModel(CharacterInfo info, GameObject modelSource)
+        {                        
+            return PrefabUtility.InstantiatePrefab(modelSource) as GameObject;
         }
 
-        public static GameObject SaveAndRemovePrefabInstance(GameObject prefabAsset, GameObject prefabInstance)
-        {            
-            GameObject prefab = PrefabUtility.SaveAsPrefabAsset(prefabInstance, AssetDatabase.GetAssetPath(prefabAsset));
+        public static GameObject CreateLODInstanceFromModel(CharacterInfo info, GameObject modelSource)
+        {                        
+            Renderer[] renderers = modelSource.transform.GetComponentsInChildren<Renderer>(true);
+            int lodLevels = 0;
+            foreach (Renderer child in renderers)
+            {
+                if (child.name.Contains("_LOD"))
+                {
+                    string level = child.name.Substring((child.name.Length - 1), 1);
+                    lodLevels = Math.Max(lodLevels, int.Parse(level));
+                }
+            }
+
+            bool originalCharacter = renderers.Length != lodLevels;
+
+            lodLevels += 1;
+            LOD[] lods = new LOD[lodLevels];
+            GameObject sceneLODInstance = PrefabUtility.InstantiatePrefab(modelSource) as GameObject;
+            LODGroup lodGroup = sceneLODInstance.AddComponent<LODGroup>();            
+            Renderer[] prefabRenderers = sceneLODInstance.transform.GetComponentsInChildren<Renderer>(true);                
+
+            if (originalCharacter)
+            {
+                List<Renderer> renderersListLOD0 = new List<Renderer>();
+                for (int i = 0; i < prefabRenderers.Length; i++) // Process LOD0
+                {
+                    if (!prefabRenderers[i].name.Contains("_LOD"))
+                    {
+                        renderersListLOD0.Add(prefabRenderers[i]);
+                    }
+                }
+                Renderer[] renderersLOD0 = renderersListLOD0.ToArray();
+                lods[0] = new LOD((1.0F / (2)), renderersLOD0);
+            }
+
+            for (int i = 1; i < lodLevels; i++) // Does not process LOD0
+            {
+                string LODLevel = "_LOD" + i;
+                for (int j = 0; j < prefabRenderers.Length; j++)
+                {
+                    if (prefabRenderers[j].name.EndsWith(LODLevel))
+                    {
+                        Renderer[] rendererLOD = new Renderer[1];
+                        rendererLOD[0] = prefabRenderers[j];
+                        lods[i] = new LOD(1.0F / (i + 2), rendererLOD);
+                    }
+
+                    if (i == lodLevels - 1)
+                    {
+                        lods[i].screenRelativeTransitionHeight = 0.02f;
+                    }
+                }
+            }
+
+            lodGroup.SetLODs(lods);
+            lodGroup.RecalculateBounds();
+
+            return sceneLODInstance;
+        }
+
+        public static GameObject SaveAndRemovePrefabInstance(GameObject prefabInstance, string assetPath)
+        {
+            //GameObject prefab = PrefabUtility.SaveAsPrefabAsset(prefabInstance, assetPath);
+            PrefabUtility.ApplyPrefabInstance(prefabInstance, InteractionMode.AutomatedAction);
             UnityEngine.Object.DestroyImmediate(prefabInstance);
-            return prefab;
+            return AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
         }
 
         public static int CountLODs(GameObject fbx)
@@ -605,7 +823,7 @@ namespace Reallusion.Import
             foreach (Renderer r in renderers)
             {
                 int index = r.name.LastIndexOf("_LOD");                
-                if (index >= 0 && r.name.Length - index == 5 && char.IsDigit(r.name[r.name.Length - 1]))
+                if (index >= 0 && r.name.Length == index + 5 && char.IsDigit(r.name[r.name.Length - 1]))
                 {
                     // any mesh with a _LOD<N> suffix is a LOD level
                     string levelString = r.name.Substring(r.name.Length - 1, 1);
@@ -624,103 +842,6 @@ namespace Reallusion.Import
             return levels.Count;
         }
         
-        public static GameObject CreateOneLODPrefabFromModel(CharacterInfo info, GameObject fbx, string suffix, out GameObject sceneLODInstance)
-        {
-            sceneLODInstance = new GameObject();
-            LODGroup lodGroup = sceneLODInstance.AddComponent<LODGroup>();
-            string prefabFolder = Util.CreateFolder(info.folder, Importer.PREFABS_FOLDER);
-            //string namedPrefabFolder = Util.CreateFolder(prefabFolder, info.name);
-            string prefabPath = Path.Combine(prefabFolder, info.name + suffix + ".prefab");
-            string animatorControllerPath = Path.Combine(info.folder, info.name + "_animator.controller");            
-
-            Renderer[] renderers = fbx.transform.GetComponentsInChildren<Renderer>(true);
-            int lodLevel = 0;
-            foreach (Renderer child in renderers)
-            {
-                if (child.name.Contains("_LOD"))
-                {
-                    string level = child.name.Substring((child.name.Length - 1), 1);
-                    lodLevel = Math.Max(lodLevel, int.Parse(level));
-                }
-            }
-
-            if (renderers.Length == lodLevel)
-            {
-                LOD[] lods = new LOD[lodLevel];
-                GameObject lodPrefabTemp = PrefabUtility.InstantiatePrefab(fbx) as GameObject;
-                lodPrefabTemp.transform.SetParent(sceneLODInstance.transform, false);
-                Renderer[] prefabRenderers = lodPrefabTemp.transform.GetComponentsInChildren<Renderer>(true);
-
-                for (int i = 0; i < lodLevel; ++i) // Does not process LOD0
-                {
-                    string LODLevel = "_LOD" + (i + 1);
-                    for (int j = 0; j < prefabRenderers.Length; j++)
-                    {
-                        if (prefabRenderers[j].name.Contains(LODLevel))
-                        {
-                            Renderer[] rendererLOD = new Renderer[1];
-                            rendererLOD[0] = prefabRenderers[j];
-                            lods[i] = new LOD(1.0F / (i + 2), rendererLOD);
-                        }
-
-                        if (i == lodLevel - 1)
-                        {
-                            lods[i].screenRelativeTransitionHeight = (0.02f);
-                        }
-                    }
-                }
-
-                lodGroup.SetLODs(lods);
-                lodGroup.RecalculateBounds();
-            }
-            else
-            {
-                lodLevel++;
-                LOD[] lods = new LOD[lodLevel];
-                GameObject lodPrefabTemp = PrefabUtility.InstantiatePrefab(fbx) as GameObject;
-                lodPrefabTemp.transform.SetParent(sceneLODInstance.transform, false);
-                Renderer[] prefabRenderers = lodPrefabTemp.transform.GetComponentsInChildren<Renderer>(true);
-
-                if (File.Exists(animatorControllerPath))
-                    lodPrefabTemp.GetComponent<Animator>().runtimeAnimatorController = 
-                            AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(animatorControllerPath);
-
-                List<Renderer> renderersListLOD0 = new List<Renderer>();
-                for (int i = 0; i < prefabRenderers.Length; i++) // Process LOD0
-                {
-                    if (!prefabRenderers[i].name.Contains("_LOD"))
-                    {
-                        renderersListLOD0.Add(prefabRenderers[i]);
-                    }
-                }
-                Renderer[] renderersLOD0 = renderersListLOD0.ToArray();
-                lods[0] = new LOD((1.0F / (2)), renderersLOD0);
-                for (int i = 1; i < lodLevel; i++)
-                {
-                    string LODLevel = "_LOD" + i;
-                    for (int j = 0; j < prefabRenderers.Length; j++)
-                    {
-                        if (prefabRenderers[j].name.Contains(LODLevel))
-                        {
-                            Renderer[] rendererLOD = new Renderer[1];
-                            rendererLOD[0] = prefabRenderers[j];
-                            lods[i] = new LOD(1.0F / (i + 2), rendererLOD);
-                        }
-                        if (i == lodLevel - 1)
-                        {
-                            lods[i].screenRelativeTransitionHeight = (0.02f);
-                        }
-                    }
-                }
-                lodGroup.SetLODs(lods);
-                lodGroup.RecalculateBounds();
-            }
-
-            GameObject prefab = PrefabUtility.SaveAsPrefabAsset(sceneLODInstance, prefabPath);
-
-            return prefab;
-        }        
-        
         public static bool IsBodyMesh(SkinnedMeshRenderer smr)
         {
             string meshName = smr.gameObject.name;
@@ -730,6 +851,8 @@ namespace Reallusion.Import
 
             foreach (Material mat in smr.sharedMaterials)
             {
+                if (!mat) continue;
+
                 if (mat.name.iContains("Std_Skin_")) return true;
                 if (mat.shader.name.iContains(Pipeline.SHADER_HQ_HEAD) ||
                     mat.shader.name.iContains(Pipeline.SHADER_HQ_SKIN)) return true;
@@ -744,6 +867,8 @@ namespace Reallusion.Import
 
             foreach (Material mat in smr.sharedMaterials)
             {
+                if (!mat) continue;
+
                 if (mat.name.iContains("Hair") && mat.name.iContains("Transparency")) return true;
                 if (mat.shader.name.iContains(Pipeline.SHADER_HQ_HAIR)) return true;
             }

@@ -17,13 +17,7 @@
  */
 
 using UnityEngine;
-using System.Collections;
-using System.Collections.Generic;
 using UnityEditor;
-using System.IO;
-using System.Linq;
-using PhysicsSettings = Reallusion.Import.WeightMapper.PhysicsSettings;
-using ColliderSettings = Reallusion.Import.ColliderManager.ColliderSettings;
 
 namespace Reallusion.Import
 {
@@ -65,12 +59,7 @@ namespace Reallusion.Import
 			GUI.backgroundColor = Color.Lerp(background, Color.white, 0.25f);
 			if (GUILayout.Button("Rebuild Constraints", GUILayout.Width(BUTTON_WIDTH)))
 			{
-				bool animationMode = AnimationMode.InAnimationMode();
-				if (animationMode) AnimationMode.StopAnimationMode();
-
 				weightMapper.ApplyWeightMap();
-
-				if (animationMode) AnimationMode.StartAnimationMode();
 			}
 			GUI.backgroundColor = background;
 			GUILayout.FlexibleSpace();
@@ -124,7 +113,6 @@ namespace Reallusion.Import
 		{
 			WindowManager.HideAnimationPlayer(true);
 			WindowManager.HideAnimationRetargeter(true);
-			if (AnimationMode.InAnimationMode()) AnimationMode.StopAnimationMode();
 
 			GameObject prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(component);
 			if (prefabRoot)
