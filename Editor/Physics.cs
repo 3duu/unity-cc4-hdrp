@@ -301,12 +301,13 @@ namespace Reallusion.Import
 
         private string characterName;
         private string fbxFolder;
+        private string fbxPath;
         private string characterGUID;
         private List<string> textureFolders;
         private QuickJSON jsonData;
         private bool aPose;
         private CharacterInfo characterInfo;
-        private const int MAGICA_WEIGHT_SIZE = 128;
+        private const int MAGICA_WEIGHT_SIZE = 256;
 
         public Physics(CharacterInfo info, GameObject prefabInstance)
         {
@@ -318,11 +319,11 @@ namespace Reallusion.Import
             //magicaClothMeshes = new List<GameObject>();
             clothMeshes = new List<ColliderManager.EnableStatusGameObject>();
             magicaClothMeshes = new List<ColliderManager.EnableStatusGameObject>();
-            modelScale = 0.01f;
-            fbxFolder = info.folder;
+            modelScale = 0.01f;            
             characterGUID = info.guid;
             characterName = info.name;
             fbxFolder = info.folder;
+            fbxPath = info.path;
             jsonData = info.JsonData;
             addClothPhysics = (info.ShaderFlags & CharacterInfo.ShaderFeatureFlags.ClothPhysics) > 0;
             addUnityClothPhysics = (info.ShaderFlags & CharacterInfo.ShaderFeatureFlags.UnityClothPhysics) > 0;
@@ -426,7 +427,8 @@ namespace Reallusion.Import
             DYNAMIC_BONE_AVAILABLE = DynamicBoneIsAvailable();
 
             // edit within the character prefab
-            using (var editingScope = new PrefabUtility.EditPrefabContentsScope(AssetDatabase.GetAssetPath(ImporterWindow.Current.Character.PrefabAsset)))
+            //using (var editingScope = new PrefabUtility.EditPrefabContentsScope(AssetDatabase.GetAssetPath(ImporterWindow.Current.Character.PrefabAsset)))
+            using (var editingScope = new PrefabUtility.EditPrefabContentsScope(AssetDatabase.GetAssetPath(characterInfo.PrefabAsset)))
             {
                 var prefabRoot = editingScope.prefabContentsRoot;
                 PurgeAllPhysicsComponents(prefabRoot);
@@ -448,11 +450,11 @@ namespace Reallusion.Import
             MAGICA_CLOTH_AVAILABLE = MagicaCloth2IsAvailable();
             DYNAMIC_BONE_AVAILABLE = DynamicBoneIsAvailable();
 
-            string currentPrefabAssetPath = AssetDatabase.GetAssetPath(ImporterWindow.Current.Character.PrefabAsset);
+            string currentPrefabAssetPath = AssetDatabase.GetAssetPath(characterInfo.PrefabAsset);// ImporterWindow.Current.Character.PrefabAsset);
             GameObject prefabRoot = PrefabUtility.LoadPrefabContents(currentPrefabAssetPath);
             PurgeAllPhysicsComponents(prefabRoot);
 
-            if (characterInfo.ShaderFlags.HasFlag(CharacterInfo.ShaderFeatureFlags.ClothPhysics) || characterInfo.ShaderFlags.HasFlag(CharacterInfo.ShaderFeatureFlags.ClothPhysics))
+            if (characterInfo.ShaderFlags.HasFlag(CharacterInfo.ShaderFeatureFlags.ClothPhysics) || characterInfo.ShaderFlags.HasFlag(CharacterInfo.ShaderFeatureFlags.HairPhysics))
             {
                 AddCollidersToPrefabRoot(prefabRoot);
             }
@@ -500,7 +502,7 @@ namespace Reallusion.Import
                 bool boneValid = validSpringBoneColliders.Contains(collider.boneName);
                 bool addFullColliderSet = true; // placeholder
 
-                if (addMagicaClothPhysics)
+                if (addMagicaClothPhysics || addMagicaClothHairPhysics)
                 {
                     if (MAGICA_CLOTH_AVAILABLE)
                     {
@@ -695,15 +697,12 @@ namespace Reallusion.Import
         }
 
         private void AddSpringBones()
-        {
-            if (addHairPhysics)
-            {
-                if (addHairSpringBones)
-                    AddDynamicBoneSpringBones();
+        {          
+            if (addHairSpringBones)
+                AddDynamicBoneSpringBones();
 
-                if (addMagicaHairSpringBones)
-                    AddMagicaBoneCloth();
-            }
+            if (addMagicaHairSpringBones)
+                AddMagicaBoneCloth();
         }
 
         private void AddDynamicBoneSpringBones()
@@ -972,7 +971,7 @@ namespace Reallusion.Import
                 Material mat = renderer.sharedMaterials[i];
 
                 if (!mat) continue;
-                string sourceName = mat.name;
+                string sourceName = Util.GetSourceMaterialName(fbxPath, mat);
                 if (sourceName.iContains("_2nd_Pass")) continue;
                 if (sourceName.iContains("_1st_Pass"))
                 {
@@ -1047,20 +1046,20 @@ namespace Reallusion.Import
                 foreach (Transform t in transforms)
                 {
                     GameObject obj = t.gameObject;
+                    string meshName = obj.name;
+                    if (meshName.iContains("_Extracted"))
+                    {
+                        meshName = meshName.Remove(meshName.IndexOf("_Extracted"));
+                    }
+
                     foreach (SoftPhysicsData data in softPhysics)
                     {
-                        string meshName = obj.name;
-                        if (meshName.iContains("_Extracted"))
+                        if (meshName == data.meshName)
                         {
-                            meshName = meshName.Remove(meshName.IndexOf("_Extracted"));
-                        }
-
-                        if (!data.isHair && addMagicaClothPhysics)
-                        {
-                            if (CanAddMagicaCloth(obj, meshName))
+                            if (!data.isHair && addMagicaClothPhysics)
                             {
-                                if (meshName == data.meshName)
-                                {
+                                if (CanAddMagicaCloth(obj, meshName))
+                                {                                
                                     obj.AddComponent<PrefabNavigation>();
                                     var cloth = AddMagicaClothInstance(0, obj); // typeValue 0 == create magic mesh cloth 
                                     SetComponentEnabled(cloth, data.activate);
@@ -1071,22 +1070,18 @@ namespace Reallusion.Import
                                     //magicaClothMeshes.Add(obj);
                                     magicaClothMeshes.Add(new EnableStatusGameObject(obj, GetMagicaComponentEnableStatus(obj)));
                                 }
-                            }
-                        }
-
-                        if (data.isHair && addMagicaClothHairPhysics)
-                        {
-                            if (CanAddMagicaCloth(obj, meshName))
+                            }                        
+                            else if (data.isHair && addMagicaClothHairPhysics)
                             {
-                                if (meshName == data.meshName)
-                                {
+                                if (CanAddMagicaCloth(obj, meshName))
+                                {                                
                                     obj.AddComponent<PrefabNavigation>();
                                     var cloth = AddMagicaClothInstance(0, obj);
                                     SetComponentEnabled(cloth, data.activate);
                                     if (!data.activate)
                                         Debug.Log("Physics setup for " + meshName + " added. Magica Cloth component is currently set to inactive (using settings from Character Creator export).");
                                     DoMagicaCloth(cloth, obj, data);
-                                    SetMagicaParameters(cloth);
+                                    SetMagicaParameters(cloth, true);
                                     //magicaClothMeshes.Add(obj);
                                     magicaClothMeshes.Add(new EnableStatusGameObject(obj, GetMagicaComponentEnableStatus(obj)));
                                 }
@@ -1119,7 +1114,7 @@ namespace Reallusion.Import
                 Material mat = renderer.sharedMaterials[i];
 
                 if (!mat) continue;
-                string sourceName = mat.name;
+                string sourceName = Util.GetSourceMaterialName(fbxPath, mat);
                 if (sourceName.iContains("_2nd_Pass")) continue;
                 if (sourceName.iContains("_1st_Pass"))
                 {
@@ -1136,44 +1131,25 @@ namespace Reallusion.Import
             }
 
             return canAddMagicaCloth;
-        }
+        }        
 
-        private void SetMagicaParameters(Object cloth)
+        private void SetMagicaParameters(Object cloth, bool isHair=false)
         {
             IList magicaColliderList = FetchMagicaColliders(prefabInstance.gameObject);
 
             var serializedDataProperty = cloth.GetType().GetProperty("SerializeData");
             var serializedData = serializedDataProperty.GetValue(cloth);
 
-            var particleRadius = serializedData.GetType().GetField("radius");
-            if (particleRadius != null)
+            SetFieldSubValue(serializedData, "radius", "value", 0.005f);
+
+            if (isHair)
             {
-                var particleRadiusData = particleRadius.GetValue(serializedData);
-                var particleRadiusValueField = particleRadiusData.GetType().GetField("value");
-                if (particleRadiusValueField != null)
-                {
-                    particleRadiusValueField.SetValue(particleRadiusData, 0.005f); // set the particle radius -- helps avoid the collider pushing out the cloth
-                }
+                SetFieldSubValue(serializedData, "damping", "value", 0.35f);
+                SetFieldValue(serializedData, "blendWeight", 0.5f);
             }
 
             // add a list of colliders that can interact with the cloth instance
-            var collisionConstraint = serializedData.GetType().GetField("colliderCollisionConstraint");
-            if (collisionConstraint != null)
-            {
-                var collisionConstraintData = collisionConstraint.GetValue(serializedData);
-                if (collisionConstraintData != null)
-                {
-                    var colliderListField = collisionConstraintData.GetType().GetField("colliderList");
-                    if (colliderListField != null)
-                    {
-                        var actualColliderList = colliderListField.GetValue(collisionConstraintData);
-                        if (actualColliderList != null)
-                        {
-                            colliderListField.SetValue(collisionConstraintData, magicaColliderList);
-                        }
-                    }
-                }
-            }
+            SetFieldSubValue(serializedData, "colliderCollisionConstraint", "colliderList", magicaColliderList, true);            
 
             MethodInfo setParameterChange = cloth.GetType().GetMethod("SetParameterChange");
             setParameterChange.Invoke(cloth, new object[] { });
@@ -1374,7 +1350,7 @@ namespace Reallusion.Import
         {
             // enum ClothProcess.ClothType MeshCloth = 0, BoneCloth = 1
 
-            CharacterInfo currentChar = ImporterWindow.Current.Character;
+            CharacterInfo currentChar = characterInfo;//ImporterWindow.Current.Character;
             string fbxPath = currentChar.path;
             ModelImporter importer = (ModelImporter)AssetImporter.GetAtPath(fbxPath);
             if (importer != null)
@@ -1412,7 +1388,7 @@ namespace Reallusion.Import
         {
             // enum ClothProcess.ClothType MeshCloth = 0, BoneCloth = 1
 
-            CharacterInfo currentChar = ImporterWindow.Current.Character;
+            CharacterInfo currentChar = characterInfo;
             string fbxPath = currentChar.path;
             ModelImporter importer = (ModelImporter)AssetImporter.GetAtPath(fbxPath);
             if (importer != null)
@@ -1650,6 +1626,48 @@ namespace Reallusion.Import
             return false;
         }
 
+        public static bool SetFieldSubValue(object obj, string fieldName, string subFieldName, object value, bool required=false)
+        {
+            var field = obj.GetType().GetField(fieldName);
+            if (field != null)
+            {
+                var objFieldValue = field.GetValue(obj);
+                if (objFieldValue != null)
+                {
+                    var subField = objFieldValue.GetType().GetField(subFieldName);
+                    if (subField != null)
+                    {
+                        if (required)
+                        {
+                            var subFieldValue = subField.GetValue(objFieldValue);
+                            if (subFieldValue != null)
+                            {
+                                subField.SetValue(objFieldValue, value);
+                                return true;
+                            }
+                        }
+                        else
+                        {
+                            subField.SetValue(objFieldValue, value);
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        public static bool SetFieldValue(object obj, string fieldName, object value)
+        {
+            var field = obj.GetType().GetField(fieldName);
+            if (field != null)
+            {
+                field.SetValue(obj, value);                
+                return true;                
+            }
+            return false;
+        }
+
         public static bool GetTypeProperty(object o, string property, out object value)
         {
             PropertyInfo propertyInfo = o.GetType().GetProperty(property);
@@ -1674,26 +1692,18 @@ namespace Reallusion.Import
         }
        
         public static bool CreateAbstractColliders(ColliderManager colliderManager, out List<ColliderManager.AbstractCapsuleCollider> abstractColliders)
-        {
-            CharacterInfo current;
+        { 
+            CharacterInfo current = WindowManager.FindCharacterByGUID(colliderManager.characterGUID);
+            abstractColliders = new List<ColliderManager.AbstractCapsuleCollider>();
+            if (current == null) return false;
 
-            if (ImporterWindow.Current != null)
-            {
-                // current live info (used for shaderflags) allows for switching between native and magica and rebuilding physics
-                current = ImporterWindow.Current.Character;  
-            }
-            else
-            {
-                // contains shaderflags from last build - this is acceptable when this function is called from the collidermanager in the absence of an importer window
-                current = new CharacterInfo(colliderManager.characterGUID); 
-            }
-            
             bool native = current.ShaderFlags.HasFlag(CharacterInfo.ShaderFeatureFlags.UnityClothPhysics);
             bool nativeHair = current.ShaderFlags.HasFlag(CharacterInfo.ShaderFeatureFlags.UnityClothHairPhysics);
             bool magica = current.ShaderFlags.HasFlag(CharacterInfo.ShaderFeatureFlags.MagicaCloth) && MagicaCloth2IsAvailable();
+            bool magicaMeshClothHair = current.ShaderFlags.HasFlag(CharacterInfo.ShaderFeatureFlags.MagicaClothHairPhysics) && MagicaCloth2IsAvailable();
             bool magicaBoneHair = current.ShaderFlags.HasFlag(CharacterInfo.ShaderFeatureFlags.MagicaBone) && MagicaCloth2IsAvailable();
             bool dynamic = current.ShaderFlags.HasFlag(CharacterInfo.ShaderFeatureFlags.SpringBoneHair) && DynamicBoneIsAvailable();
-            abstractColliders = new List<ColliderManager.AbstractCapsuleCollider>();
+           
 
             if (MagicaCloth2IsAvailable())
             {
@@ -1731,7 +1741,7 @@ namespace Reallusion.Import
                         }
                     }
 
-                    if (magica || magicaBoneHair)
+                    if (magica || magicaBoneHair || magicaMeshClothHair)
                     {
                         if (colliderManager.magicaColliderType == null)
                             colliderManager.magicaColliderType = GetTypeInAssemblies("MagicaCloth2.MagicaCapsuleCollider");
@@ -2014,7 +2024,7 @@ namespace Reallusion.Import
 
             if (useCompute)
             {
-                CharacterInfo currentCharacter = ImporterWindow.Current.Character;
+                CharacterInfo currentCharacter = characterInfo;//ImporterWindow.Current.Character;
 
                 string[] folders = new string[] { "Assets", "Packages" };
                 Texture2D physXWeightMap = Util.FindTexture(folders, "physXWeightMapTest");
@@ -2119,7 +2129,7 @@ namespace Reallusion.Import
         private void ReorderComponentsOfPrefabInstance()
         {
 #if UNITY_2022_3_OR_NEWER
-            string currentPrefabAssetPath = AssetDatabase.GetAssetPath(ImporterWindow.Current.Character.PrefabAsset);
+            string currentPrefabAssetPath = AssetDatabase.GetAssetPath(characterInfo.PrefabAsset);// ImporterWindow.Current.Character.PrefabAsset);
             GameObject prefabRoot = PrefabUtility.LoadPrefabContents(currentPrefabAssetPath);
             //var components = prefabRoot.GetComponents<Component>();
             List<Component> components = new List<Component>();

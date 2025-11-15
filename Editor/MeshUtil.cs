@@ -21,7 +21,6 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using System.IO;
 using System.Collections.Generic;
-using UnityEngine.AI;
 
 namespace Reallusion.Import
 {
@@ -846,6 +845,7 @@ namespace Reallusion.Import
                 for (int i = 0; i < srcMesh.blendShapeCount; i++)
                 {
                     string name = srcMesh.GetBlendShapeName(i);
+
                     if (newMesh.GetBlendShapeIndex(name) == -1)
                     {
                         int frameCount = srcMesh.GetBlendShapeFrameCount(i);
@@ -1018,6 +1018,7 @@ namespace Reallusion.Import
                 for (int i = 0; i < srcMesh.blendShapeCount; i++)
                 {
                     string name = srcMesh.GetBlendShapeName(i);
+
                     if (newMesh.GetBlendShapeIndex(name) == -1)
                     {
                         int frameCount = srcMesh.GetBlendShapeFrameCount(i);
@@ -1070,7 +1071,17 @@ namespace Reallusion.Import
         }
 
         private static void FixHDRP2PassMaterials(Material firstPass, Material secondPass)
-        {            
+        {
+            // Note: These are not present in the single pass and
+            // are wiped from the template in the material parameter copy
+            // HDShaderUtils.ResetMaterialKeywords complains *a lot* if they are missing...
+            firstPass.SetFloatIf("_IsSecondPass", 0f);
+            secondPass.SetFloatIf("_IsSecondPass", 1f);
+
+            float displace = firstPass.GetFloatIf("_Displace", 1f / 4000f);
+            firstPass.SetFloatIf("_Displace", displace + (1f / 4000f));
+            secondPass.SetFloatIf("_Displace", displace);
+
             if (Pipeline.isHDRP)
             {
                 /*
@@ -1086,8 +1097,6 @@ namespace Reallusion.Import
 
                 firstPass.SetFloat("_SurfaceType", 0f);
                 firstPass.SetFloat("_ENUMCLIPQUALITY_ON", 0f);                
-                firstPass.DisableKeyword("BOOLEAN_SECONDPASS_ON");
-                firstPass.SetFloat("BOOLEAN_SECONDPASS", 0f);
                 Pipeline.ResetMaterial(firstPass);
 
                 // transparent surface
@@ -1103,16 +1112,14 @@ namespace Reallusion.Import
                 secondPass.SetFloat("_ZTestDepthEqualForOpaque", 2f);
                 secondPass.SetFloat("_ZTestTransparent", 2f);
                 // keywords
-                secondPass.SetFloat("_ENUMCLIPQUALITY_ON", 0f);
-                secondPass.EnableKeyword("BOOLEAN_SECONDPASS_ON");
-                secondPass.SetFloat("BOOLEAN_SECONDPASS", 1f);
+                secondPass.SetFloat("_ENUMCLIPQUALITY_ON", 0f);                
                 Pipeline.ResetMaterial(secondPass);
 
                 /*
                 aif.SaveAndReimport();
                 ais.SaveAndReimport();
                 */
-            }
+            }            
         }
 
         public struct TwoPassPair
@@ -1145,6 +1152,7 @@ namespace Reallusion.Import
 
             Renderer[] renderers = prefabInstance.GetComponentsInChildren<Renderer>();
 
+            // TODO this needs to the use the mat json to determine scalp/hair 
             foreach (Renderer r in renderers)
             {
                 bool hasHairMaterial = false;                
@@ -1161,7 +1169,7 @@ namespace Reallusion.Import
                         hasHairMaterial = true;
                         hairMeshCount++;
                     }
-                    else if (Util.NameContainsKeywords(m.name, "scalp", "base"))
+                    else if (Util.NameContainsKeywords(m.name, "scalp", "base", "clap"))
                     {
                         hasScalpMaterial = true;
                     }
@@ -1188,13 +1196,15 @@ namespace Reallusion.Import
                         {
                             float alphaClipValue = 0.666f;
                             if (Pipeline.is3D) alphaClipValue = 0.55f;
+                            float shadowClip = oldMat.GetFloatIf("_ShadowClip", 0.5f);
                                                         
                             oldMat.SetFloatIf("_AlphaClip", alphaClipValue);
                             oldMat.SetFloatIf("_AlphaClip2", alphaClipValue);                            
-                            oldMat.SetFloatIf("_ShadowClip", 0.5f);                            
+                            oldMat.SetFloatIf("_ShadowClip", shadowClip);                            
                         }
 
                         bool useTessellation = oldMat.shader.name.iContains("_Tessellation");
+                        bool useAmplify = oldMat.shader.name.iContains("/Amplify/");
 
                         if (subMeshCount > 1 && oldMat.shader.name.iContains(Pipeline.SHADER_HQ_HAIR))
                         {
@@ -1234,10 +1244,12 @@ namespace Reallusion.Import
                             {
                                 // - add first pass hair shader material
                                 // - add second pass hair shader material
-                                Material firstPassTemplate = Util.FindCustomMaterial(Pipeline.MATERIAL_HQ_HAIR_1ST_PASS, useTessellation);
-                                Material secondPassTemplate = Util.FindCustomMaterial(Pipeline.MATERIAL_HQ_HAIR_2ND_PASS, useTessellation);
+                                Material firstPassTemplate = Util.FindMaterial(Pipeline.MATERIAL_HQ_HAIR_1ST_PASS);
+                                Material secondPassTemplate = Util.FindMaterial(Pipeline.MATERIAL_HQ_HAIR_2ND_PASS);
                                 Material firstPass = new Material(firstPassTemplate);
                                 Material secondPass = new Material(secondPassTemplate);
+                                Pipeline.UpgradeShader(firstPass, useTessellation, useAmplify);
+                                Pipeline.UpgradeShader(secondPass, useTessellation, useAmplify);
                                 CopyMaterialParameters(oldMat, firstPass);
                                 CopyMaterialParameters(oldMat, secondPass);
                                 FixHDRP2PassMaterials(firstPass, secondPass);
@@ -1273,10 +1285,12 @@ namespace Reallusion.Import
                             {
                                 // - add first pass hair shader material
                                 // - add second pass hair shader material
-                                Material firstPassTemplate = Util.FindCustomMaterial(Pipeline.MATERIAL_HQ_HAIR_1ST_PASS, useTessellation);
-                                Material secondPassTemplate = Util.FindCustomMaterial(Pipeline.MATERIAL_HQ_HAIR_2ND_PASS, useTessellation);
+                                Material firstPassTemplate = Util.FindMaterial(Pipeline.MATERIAL_HQ_HAIR_1ST_PASS);
+                                Material secondPassTemplate = Util.FindMaterial(Pipeline.MATERIAL_HQ_HAIR_2ND_PASS);
                                 Material firstPass = new Material(firstPassTemplate);
                                 Material secondPass = new Material(secondPassTemplate);
+                                Pipeline.UpgradeShader(firstPass, useTessellation, useAmplify);
+                                Pipeline.UpgradeShader(secondPass, useTessellation, useAmplify);
                                 CopyMaterialParameters(oldMat, firstPass);
                                 CopyMaterialParameters(oldMat, secondPass);
                                 FixHDRP2PassMaterials(firstPass, secondPass);
@@ -1640,13 +1654,42 @@ namespace Reallusion.Import
             // if it has facial blend shapes...
             if (FacialProfileMapper.MeshHasFacialBlendShapes(obj))
             {
-                if (Util.HasMaterialKeywords(obj, "scalp"))
+                /*if (Util.HasMaterialKeywords(obj, "scalp"))
                 {
                     return false;
                 }
-                else if (Util.HasMaterialKeywords(obj, "base", "brow", "beard",
+                else */ 
+                if (Util.HasMaterialKeywords(obj, "base", "brow", "beard",
                                                   "mustache", "goatee", "stubble",
-                                                  "bushy", "sword"))
+                                                  "bushy", "sword", "eyebrow", "eyelash", "lash"))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public static bool MeshIsEyelash(GameObject obj)
+        {
+            // if it has facial blend shapes...
+            if (FacialProfileMapper.MeshHasFacialBlendShapes(obj))
+            {
+                if (Util.HasMaterialKeywords(obj, "eyelash", "lash"))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public static bool MeshIsEyebrow(GameObject obj)
+        {
+            // if it has facial blend shapes...
+            if (FacialProfileMapper.MeshHasFacialBlendShapes(obj))
+            {
+                if (Util.HasMaterialKeywords(obj, "Eyebrow", "brow"))
                 {
                     return true;
                 }

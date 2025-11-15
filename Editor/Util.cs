@@ -25,6 +25,7 @@ using UnityEditor;
 using Object = UnityEngine.Object;
 using System.Linq;
 using System.Data.Sql;
+using System.Text.RegularExpressions;
 
 namespace Reallusion.Import
 {
@@ -426,86 +427,7 @@ namespace Reallusion.Import
             }
 
             return null;
-        }
-
-        public static Material FindCustomMaterial(string name, bool useTessellation, string[] folders = null)
-        {
-            Material template = null;
-            Material foundTemplate = null;
-            bool foundHDRPorURP12 = false;
-
-            if (Pipeline.isHDRP12 || Pipeline.isURP12)
-            {
-                string templateName = name + "12";
-                foundTemplate = FindMaterial(templateName, folders);
-                if (foundTemplate)
-                {
-                    name = templateName;
-                    template = foundTemplate;
-                    foundHDRPorURP12 = true;
-                }
-            }
-
-            if (Importer.USE_AMPLIFY_SHADER)
-            {
-                // There are cases where there is an URP12_Amplify shader but no corresponding URP12 base shader
-                if (Pipeline.isURP12 && !foundHDRPorURP12)
-                {
-                    string templateName = name + "12_Amplify";
-                    foundTemplate = FindMaterial(templateName, folders);
-                    if (foundTemplate)
-                    {
-                        name = templateName;
-                        template = foundTemplate;
-                        foundHDRPorURP12 = true;
-                    }
-                }
-
-                if (!foundTemplate)
-                {
-                    string templateName = name + "_Amplify";
-                    foundTemplate = FindMaterial(templateName, folders);
-                    if (foundTemplate)
-                    {
-                        name = templateName;
-                        template = foundTemplate;
-                    }
-                }
-            }
-
-            if (useTessellation)
-            {
-                foundTemplate = null;
-
-                // There are cases where there is an HDRP12_T shader but no corresponding HDRP12 base shader
-                if (Pipeline.isHDRP12 && !foundHDRPorURP12)
-                {
-                    string templateName = name + "12_T";
-                    foundTemplate = FindMaterial(templateName, folders);
-                    if (foundTemplate)
-                    {
-                        name = templateName;
-                        template = foundTemplate;
-                        foundHDRPorURP12 = true;
-                    }
-                }
-                
-                if (!foundTemplate)
-                {
-                    string templateName = name + "_T";
-                    foundTemplate = FindMaterial(templateName, folders);
-                    if (foundTemplate)
-                    {
-                        name = templateName;
-                        template = foundTemplate;
-                    }
-                }
-            }
-
-            if (template) return template;
-
-            return FindMaterial(name, folders);
-        }
+        }        
 
         public static Texture2D FindTexture(string[] folders, string search)
         {
@@ -520,6 +442,25 @@ namespace Reallusion.Import
                 if (texName.iEquals(search))
                 {
                     return AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+                }
+            }
+
+            return null;
+        }
+
+        public static Texture2DArray FindTextureArray(string[] folders, string search)
+        {
+            string[] texGuids;
+
+            texGuids = AssetDatabase.FindAssets(search + " t:texture2darray", folders);
+
+            foreach (string guid in texGuids)
+            {
+                string assetPath = AssetDatabase.GUIDToAssetPath(guid);
+                string texName = Path.GetFileNameWithoutExtension(assetPath);
+                if (texName.iEquals(search))
+                {
+                    return AssetDatabase.LoadAssetAtPath<Texture2DArray>(assetPath);
                 }
             }
 
@@ -598,21 +539,30 @@ namespace Reallusion.Import
 
             texGuids = AssetDatabase.FindAssets("t:prefab RL_PreviewScenePrefab");
 
+            GameObject localPreviewScene = null;
+            GameObject previewScene = null;
+
             foreach (string guid in texGuids)
             {
                 string assetPath = AssetDatabase.GUIDToAssetPath(guid);
                 string name = Path.GetFileNameWithoutExtension(assetPath);
-                if (name.Equals("RL_PreviewScenePrefab", System.StringComparison.InvariantCultureIgnoreCase))
+                if (!previewScene && name.iEquals("RL_PreviewScenePrefab"))
                 {
-                    return AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+                    Debug.Log("RL " + assetPath);
+                    previewScene = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+                }
+                else if (!localPreviewScene && name.iEquals("RL_PreviewScenePrefab_Local"))
+                {
+                    Debug.Log("Local " + assetPath);
+                    localPreviewScene = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
                 }
             }
 
-            return null;
+            return localPreviewScene != null ? localPreviewScene : previewScene;
         }
 
         public static string GetSourceMaterialName(string fbxPath, Material sharedMaterial)
-        {
+        {            
             ModelImporter importer = (ModelImporter)AssetImporter.GetAtPath(fbxPath);
             Dictionary<AssetImporter.SourceAssetIdentifier, Object> importerRemaps = importer.GetExternalObjectMap();
 
@@ -623,11 +573,18 @@ namespace Reallusion.Import
 
             string sourceName = sharedMaterial.name;
 
+            // remove 1st pass, 2nd pass suffix from hair materials
             if (sourceName.iContains("_1st_Pass"))
                 sourceName = sourceName.Substring(0, sourceName.IndexOf("_1st_Pass", System.StringComparison.InvariantCultureIgnoreCase));
 
             if (sourceName.iContains("_2nd_Pass"))
                 sourceName = sourceName.Substring(0, sourceName.IndexOf("_2nd_Pass", System.StringComparison.InvariantCultureIgnoreCase));
+
+            // remove Unity duplication Suffix
+            //if (sourceName[sourceName.Length - 2] == ' ' && char.IsDigit(sourceName[sourceName.Length - 1]))
+            //{
+            //    sourceName = sourceName.Substring(0, sourceName.Length - 2);
+            //}
 
             return sourceName;
         }
@@ -1065,11 +1022,14 @@ namespace Reallusion.Import
 
         public static void FindSceneObjects(Transform root, string search, List<GameObject> found)
         {
-            if (root.name.iStartsWith(search)) found.Add(root.gameObject);
-
-            for (int i = 0; i < root.childCount; i++)
+            if (root && !string.IsNullOrEmpty(search))
             {
-                FindSceneObjects(root.GetChild(i), search, found);
+                if (root.name.iStartsWith(search)) found.Add(root.gameObject);
+
+                for (int i = 0; i < root.childCount; i++)
+                {
+                    FindSceneObjects(root.GetChild(i), search, found);
+                }
             }
         }
         
@@ -1141,9 +1101,22 @@ namespace Reallusion.Import
             return false;
         }
 
+        public static string CamelCaseToSpaces(string s)
+        {
+            return Regex.Replace(s, "([A-Z0-9]+)", " $1").Trim();
+        }
 
-
-
+        public static bool Filter(string name, string filter)
+        {
+            if (!string.IsNullOrEmpty(filter))
+            {
+                return name.iContains(filter);
+            }
+            else
+            {
+                return true;
+            }
+        }
 
 
         public static GameObject EditPrefabContents(GameObject prefabAsset)
@@ -1408,5 +1381,102 @@ namespace Reallusion.Import
                 }                
             }
         }
+
+        public static Rect GetRectToCenterWindow(float width, float height)
+        {
+#if UNITY_2020_3_OR_NEWER
+            Rect appRect = EditorGUIUtility.GetMainWindowPosition();
+#else
+            Rect appRect = GetEditorApplicationWindowRect();
+#endif
+
+            if (appRect == new Rect())
+            {
+                return new Rect(100f, 100f, width, height);
+            }
+
+            float xOrigin = appRect.x + (appRect.width / 2f) - (width / 2f);
+            float yOrigin = appRect.y + (appRect.height / 2f) - (height / 2f);
+
+            return new Rect(xOrigin, yOrigin, width, height);
+        }
+
+        public static Rect GetEditorApplicationWindowRect()
+        {
+            // The editor application's position is stored in:
+            // The current domain's assembly called UnityEditor.CoreModule (System.Reflection.Assembly)
+            // Inside the CoreModule the defined type ContainerWindow (System.Reflection.TypeInfo)
+
+            // All Unity application windows are objects of type ContainerWindow (as above)
+            // Each window has a "position" 'property' and a "m_ShowMode" 'field'
+            // Get a field object for "m_ShowMode" and a property object for "position"        
+            // Iterate through the windows obtained with Resources.FindObjectsOfTypeAll
+            // The main window has the field m_ShowMode == 4 (field object .GetValue(window))
+            // The main window is obtained with property object .GetValue(window)
+
+#if UNITY_2020_3_OR_NEWER
+            System.Reflection.Assembly coreModuleAssembly = AppDomain.CurrentDomain.GetAssemblies().Where(t => t.FullName.Contains("UnityEditor.CoreModule")).FirstOrDefault();
+            if (coreModuleAssembly != null)
+            {
+                System.Reflection.TypeInfo containerWindowTypeInfo = coreModuleAssembly.DefinedTypes.Where(t => t.FullName.Contains("ContainerWindow")).FirstOrDefault();
+                if (containerWindowTypeInfo != null)
+                {
+                    var showModeField = containerWindowTypeInfo.GetField("m_ShowMode", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    var positionProperty = containerWindowTypeInfo.GetProperty("position", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                    if (showModeField != null && positionProperty != null)
+                    {
+                        var allContainerWindows = Resources.FindObjectsOfTypeAll(containerWindowTypeInfo);
+                        foreach (var win in allContainerWindows)
+                        {
+                            var showmode = (int)showModeField.GetValue(win);
+                            if (showmode == 4) // main window
+                            {
+                                var mainWindowPosition = (Rect)positionProperty.GetValue(win, null);
+                                return mainWindowPosition;
+                            }
+                        }
+                    }
+                }
+            }
+#else
+            //Unity 2019 ContainerWindow type is in the UnityEditor assembly
+            foreach (System.Reflection.Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                foreach (System.Reflection.TypeInfo t in assembly.DefinedTypes)
+                {
+                    if (t.FullName.iContains("ContainerWindow"))
+                    {
+                        var showModeField = t.GetField("m_ShowMode", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        var positionProperty = t.GetProperty("position", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                        if (showModeField != null && positionProperty != null)
+                        {
+                            var allContainerWindows = Resources.FindObjectsOfTypeAll(t);
+                            foreach (var win in allContainerWindows)
+                            {
+                                var showmode = (int)showModeField.GetValue(win);
+                                if (showmode == 4) // main window
+                                {
+                                    var mainWindowPosition = (Rect)positionProperty.GetValue(win, null);
+                                    return mainWindowPosition;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+#endif
+            return new Rect(0f, 0f, 0f, 0f);  // something was null - return a new empty Rect
+        }
+
+        public static string RandomString(int length)
+        {
+            System.Random random = new System.Random();
+
+            const string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            return new string(Enumerable.Repeat(chars, length)
+                .Select(s => s[random.Next(s.Length)]).ToArray());
+        }
+
+
     }    
 }
