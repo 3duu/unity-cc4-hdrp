@@ -24,5 +24,5 @@ MonoBehaviour:
     thicknessRemap: {x: 0, y: 5}
     worldScale: 1
     ior: 1.54
-    hash: 1081974762
+    hash: 0
   m_Version: 2
