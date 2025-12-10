@@ -204,7 +204,7 @@ namespace Reallusion.Import
         private static string paramDirection = "param_direction";
         [SerializeField]
         private static AnimatorState playingState;
-        [SerializeField]
+     
         public static int controlStateHash { get; set; }
 
         // animator/animation settings
