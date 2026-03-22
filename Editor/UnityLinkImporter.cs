@@ -906,7 +906,7 @@ namespace Reallusion.Import
             DataLinkActorData existing = null;
 
 #if UNITY_2023_OR_NEWER
-            DataLinkActorData[] linkedObjects = GameObject.FindObjectsByType<DataLinkActorData>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            DataLinkActorData[] linkedObjects = GameObject.FindObjectsByType<DataLinkActorData>(FindObjectsInactive.Include);
 #else
             DataLinkActorData[] linkedObjects = GameObject.FindObjectsOfType<DataLinkActorData>();
 #endif

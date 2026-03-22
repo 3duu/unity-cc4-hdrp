@@ -1162,7 +1162,7 @@ namespace Reallusion.Import
         public bool CreateTreeView()
         {
 #if UNITY_2023_OR_NEWER
-            PlayableDirector[] playableDirectors = GameObject.FindObjectsByType<PlayableDirector>(FindObjectsSortMode.None);
+            PlayableDirector[] playableDirectors = GameObject.FindObjectsByType<PlayableDirector>();
 #else
             PlayableDirector[] playableDirectors = GameObject.FindObjectsOfType<PlayableDirector>();
 #endif
