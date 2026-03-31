@@ -16,8 +16,8 @@
  * along with CC_Unity_Tools.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-using System.Collections;
 using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
 
 namespace Reallusion.Import
@@ -77,7 +77,7 @@ namespace Reallusion.Import
             string shaderRefMin = shaderRef + "Min";
             string shaderRefMax = shaderRef + "Max";
 
-            if (mat.shader && 
+            if (mat.shader &&
                 mat.shader.FindPropertyIndex(shaderRefMin) >= 0 &&
                 mat.shader.FindPropertyIndex(shaderRefMax) >= 0)
             {
@@ -155,7 +155,26 @@ namespace Reallusion.Import
         {
             if (mat.shader && mat.shader.FindPropertyIndex(shaderRef) >= 0)
             {
-                return mat.GetFloat(shaderRef);                
+                return mat.GetFloat(shaderRef);
+            }
+            return defaultValue;
+        }
+
+        public static bool SetBoolIf(this Material mat, string shaderRef, bool value)
+        {
+            if (mat.shader && mat.shader.FindPropertyIndex(shaderRef) >= 0)
+            {
+                mat.SetFloat(shaderRef, value ? 1f : 0f);
+                return true;
+            }
+            return false;
+        }
+
+        public static bool GetBoolIf(this Material mat, string shaderRef, bool defaultValue = false)
+        {
+            if (mat.shader && mat.shader.FindPropertyIndex(shaderRef) >= 0)
+            {
+                return mat.GetFloat(shaderRef) > 0f ? true : false;
             }
             return defaultValue;
         }
@@ -212,11 +231,11 @@ namespace Reallusion.Import
                 mat.SetFloatIf(shaderRef, 0f);
             }
         }
-        
+
         public static void SetEnumKeyword(this Material mat, string shaderRef, float value, Dictionary<float, string> enumSet)
         {
             mat.SetFloatIf(shaderRef, value);
-            foreach(KeyValuePair<float, string> kvp in enumSet)
+            foreach (KeyValuePair<float, string> kvp in enumSet)
             {
                 if (kvp.Key == value)
                     mat.EnableKeyword(kvp.Value);
@@ -231,6 +250,42 @@ namespace Reallusion.Import
             float valueFloat = mat.GetFloatIf(shaderRef, 0f);
             bool hasKeyword = mat.IsKeywordEnabled(shaderRef + "_ON");
             return hasKeyword || valueFloat > 0f;
+        }
+
+        public static bool HasAlphaPixels(this Texture2D tex, bool inAlphaChannel = true, float threshold = 0.9f)
+        {
+            Color[] pixels = tex.GetPixels();
+            if (inAlphaChannel)
+            {
+                for (int i = 0; i < pixels.Length; i += 1)
+                {
+                    if (pixels[i].a < threshold)
+                    {
+                        return true;
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < pixels.Length; i += 1)
+                {
+                    if (pixels[i].r < threshold)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        public static GUID GetGUID(this Object obj)
+        {
+            return AssetDatabase.GUIDFromAssetPath(AssetDatabase.GetAssetPath(obj));
+        }
+
+        public static string GetGUIDString(this Object obj)
+        {
+            return AssetDatabase.GUIDFromAssetPath(AssetDatabase.GetAssetPath(obj)).ToString();
         }
     }
 }

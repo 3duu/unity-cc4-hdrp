@@ -1,6 +1,69 @@
 Changelog
 =========
 
+### 2.2.5
+- Bone driver update:
+    - Toggle bone groups to enable / disable driving certain bones.
+    - Missing blendshapes for driver facial expressions are re-added to mesh.
+- Enhanced alpha blending type detection between cutout, gradient and opaque.
+- Material type overrides - for when the auto-detection gets it wrong.
+- Fix some OnGUI error spam at start up.
+- Updates for Unity 6.4.
+
+### 2.2.4
+- Lod Combiner UI fixes.
+- Fixes for a possible infinite update loop.
+- Bone driver fix for direct Visemes Ih and Th.
+- HDRP diffusion profiles restored after shader package upgrade.
+
+### 2.2.3
+- Removed all references to PlasticSCM Json in Runtime package.
+- Fix to Camera Proxy inspector.
+- Added Wrinkle Displacement option to character build features.
+- Increased threshold of transparency detection.
+- Clean up of unused usings
+- Fix to object / material names being less than 3 characters.
+
+### 2.2.2
+- Generic animation merge enabled (experimental)
+    - Animated bones not in humanoid skeleton will be combined into the mechanim humanoid animation clip.
+    - e.g. Character animations with animated accessory bones (wings, tails, ears) or spring bones (hair accessories).
+- Better transparency detection & basic hair detection.
+- Fix to calculated blendshape normal distortion.
+- Bone driver fixes.
+- Animation retargeting fixes.
+- Fix to DataLinkActorData editor code.
+
+### 2.2.1
+- HD Facial profile animation retargeting.
+- Updated Animation Player - Facial Expression Preview for HD facial profile.
+- DataLink lights import with highest shadow quality.
+- Better opacity detection on hair, brows, and beards.
+- Faster animation retargeting.
+- LOD Model processing fix.
+- Merged Material update.
+- Standard eyelash disabled/hidden when HD eyelash detected.
+- Fix to Send motion when character names differ.
+
+### 2.2.0
+- Build error from Bone drivers fixed.
+- Unity 2020.3 no longer supported directly.
+- Eye shader scale update.
+- Shader updates for URP 17.1, 17.2 and 17.3.
+
+### 2.1.1
+- Unity 6.3 fixes.
+- Import blendshape normals set to calculate by default.
+- Eye shader limbus adjusted to be more accurate to CC/iC eyes.
+- Eyelash and Brows shadow and reflection fixes.
+- Bone driver script added.
+    - For exports with bone/expression data (CC4.63 / CC5.0+).
+    - Script will drive face bones from the facial expression blendshapes on the body mesh.
+    - Script will also copy facial expression blendshapes from the body to other relevant meshes.
+    - Facial expression blendshapes need only target the body and driver script takes care of the rest.
+    - Optional expression strength controls.
+    - Animations retargeted to characters with active bone driver scripts have the driven blendshapes and bones stripped from the animation, significantly reducing size and improving playback performance.
+
 ### 2.1.0
 - Shader update for CC5 HD characters.
     - Eye shader updates
@@ -20,7 +83,7 @@ Changelog
     - Tessellation shaders for URP (Skin only for now)
     - Retarget expressions to/from CC5 HD profile.
     - Simultaneous datalink connection to Character Creator and iClone.
-    - Sending meshes from the Unity scene to iClone to aid scene specific animation. 
+    - Sending meshes from the Unity scene to iClone to aid scene specific animation.
 
 ### 2.0.0
 - Unified version, for all versions of Unity and pipelines.

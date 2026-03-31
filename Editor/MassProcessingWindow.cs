@@ -16,12 +16,12 @@
  * along with CC_Unity_Tools.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
-using System;
-using System.Linq;
-using System.IO;
 
 namespace Reallusion.Import
 {
@@ -251,9 +251,12 @@ namespace Reallusion.Import
 
         public void BeginMassProcessing()
         {
+            WindowManager.HideAnimationRetargeter(true);
+            WindowManager.HideAnimationPlayer(true);
+
             // add a delayed call to refresh the char list in the importer window and the batch window
             EditorApplication.delayCall += ProcessingRefresh;
-            buildQueue = new List<CharacterInfo>();
+            buildQueue = new List<CharacterInfo>();            
 
             foreach (CharacterInfo character in workingList)
             {

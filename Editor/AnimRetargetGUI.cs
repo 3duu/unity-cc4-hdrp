@@ -18,12 +18,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
+using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using Object = UnityEngine.Object;
-using System.IO;
 
 namespace Reallusion.Import
 {
@@ -39,8 +40,10 @@ namespace Reallusion.Import
         private static Texture2D unlockedImage;
         private static Texture2D lockedImage;
 
-        private static float baseControlWidth = 173f;
-        private static float sliderWidth = 303f;
+        private static float width = 313f;
+        private static float height = 240f;
+        //private static float baseControlWidth = 168f;
+        private static float sliderWidth = 295f;
         private static float textWidth = 66f;
         private static float textHeight = 18f;
         private static float largeIconDim = 60f;
@@ -66,6 +69,13 @@ namespace Reallusion.Import
         private static float legOffset = 0f;
         private static float heelOffset = 0f;
         private static float heightOffset = 0f;
+
+        private static Styles styles;
+        private static bool expressionDrivenBones = true;
+        private static bool expressionBlendShapeTranspose = true;
+        private static bool expressionConstrain = false;
+        private static bool createFullAnimationTrack = false;
+        private static bool logOnce = false;
 
         private static AnimationClip OriginalClip => AnimPlayerGUI.OriginalClip;
         private static AnimationClip WorkingClip => AnimPlayerGUI.WorkingClip;
@@ -156,10 +166,20 @@ namespace Reallusion.Import
             // set the animation player's Foot IK to off
             AnimPlayerGUI.ForceSettingsReset();
             AnimPlayerGUI.UpdateAnimator();
-        }        
+            CopyBoneDriverSettingsToGUI();
+        }
+
+        public static void CopyBoneDriverSettingsToGUI()
+        {
+            (bool, bool, bool) bdSettings = GetBoneDriverSettingsReflection();
+            expressionDrivenBones = bdSettings.Item1;
+            expressionBlendShapeTranspose = bdSettings.Item2;
+            expressionConstrain = bdSettings.Item3;
+            createFullAnimationTrack = !(expressionDrivenBones || expressionBlendShapeTranspose || expressionConstrain);
+        }
 
         static void CleanUp()
-        {            
+        {
             // reset the player fully with the currently selected clip
             AnimPlayerGUI.SetupCharacterAndAnimation();
         }
@@ -261,70 +281,171 @@ namespace Reallusion.Import
                 heelOffset = 0f;
                 heightOffset = 0f;
             }
-                      
+
             OffsetALL();
         }
 
-        public static void DrawRetargeter()
+        public class Styles
+        {
+            public GUIStyle textFieldStyle;
+            public GUIStyle smallTitleLabel;
+
+            public Styles()
+            {
+                textFieldStyle = new GUIStyle(EditorStyles.textField);
+                textFieldStyle.wordWrap = true;
+
+                smallTitleLabel = new GUIStyle(GUI.skin.label);
+                smallTitleLabel.fontStyle = FontStyle.BoldAndItalic;
+            }
+        }
+
+        public static void DrawRetargeter(Rect position)
         {
             if (!(OriginalClip && WorkingClip)) GUI.enabled = false;
             else if (!AnimPlayerGUI.CharacterAnimator) GUI.enabled = false;
             else GUI.enabled = true;
 
-            // All retarget controls
-            GUILayout.BeginVertical();
-            // Horizontal Group of 3 controls `Hand` `Jaw` and `Blendshapes`
-            GUILayout.BeginHorizontal();
-            GUILayout.BeginVertical("box", GUILayout.Width(baseControlWidth));  // Hand control box - Width used to impose layout footprint for overlay
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button(new GUIContent(handImage, "Switch between hand modes - Original animation info - Static open hand pose - Static closed hand pose. (This only affects pose of the fingers)."), GUILayout.Width(largeIconDim), GUILayout.Height(largeIconDim)))
+            if (styles == null) styles = new Styles();
+            if (tabStyles == null) tabStyles = new TabStyles();
+            if (tabCont == null) tabCont = new TabContents();
+
+            // original rect (x:0.00, y:0.00, width:313.00, height:248.00)
+            Rect areaRect = new Rect(0f, 0f, width, height);
+
+            GUILayout.BeginVertical(); // full window in vertical
+
+            activeTab = TabbedArea(activeTab, areaRect, tabCont.tabCount, TAB_HEIGHT, tabCont.toolTips, tabCont.icons, 20f, 20f, true, tabCont.overrideTab, tabCont.overrideIcons, false);
+
+            GUILayout.Space(TAB_HEIGHT);
+
+            GUILayout.BeginHorizontal(); // horizontal spacer to force window size
+            GUILayout.Space(areaRect.width);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal(); // horizontal container
+
+            GUILayout.BeginVertical(); // vertical spacer to force window size
+            GUILayout.Space(areaRect.height - TAB_HEIGHT);
+            GUILayout.EndVertical();
+
+            GUILayout.BeginVertical(); // vertical layout of content
+
+            switch (activeTab)
             {
-                handPose++;
-                if (handPose > 2) handPose = 0;
-                ApplyPose(handPose);                
+                case 0:
+                    {
+                        DrawAnimationadjustmentControls();
+                        break;
+                    }
+                case 1:
+                    {
+                        DrawBlendShapeRetargetControls();
+                        break;
+                    }
             }
+
+            GUILayout.EndVertical();
+
+            GUILayout.EndHorizontal(); // end horizontal container
+
+            LowerControlGUI();
+
+            GUILayout.EndVertical(); // end full window in vertical
+        }
+
+        public static void DrawBlendShapeRetargetControls()
+        {
             GUILayout.BeginVertical();
 
-            GUIStyle radioSelectionStyle = new GUIStyle(EditorStyles.radioButton);
-            radioSelectionStyle.padding = new RectOffset(24, 0, 0, 0);
-            GUIContent[] contents = new GUIContent[]
-            {
-                new GUIContent("Original", "Use the hand pose/animation from the original animation clip."),
-                new GUIContent("Open", "Use a static neutral open hand pose for the full animation clip."),
-                new GUIContent("Closed", "Use a static neutral closed hand pose for the full animation clip.")
-            };
+            // Content
+            GUILayout.Label("Character Expression Controls", styles.smallTitleLabel);
             EditorGUI.BeginChangeCheck();
-            handPose = GUILayout.SelectionGrid(handPose, contents, 1, radioSelectionStyle);
+            expressionDrivenBones = GUILayout.Toggle(expressionDrivenBones, new GUIContent("Expressions Animate Facial Bones", "Use expression blend shapes to to displace the bones of all face parts (The mechanim animation system otherwise won't animate all of them)"));
             if (EditorGUI.EndChangeCheck())
             {
-                ApplyPose(handPose);
+                if (expressionDrivenBones)
+                {
+                    createFullAnimationTrack = false;
+                    SceneView.RepaintAll();
+                }
             }
-            GUILayout.EndVertical();
-            GUILayout.EndHorizontal();
-            GUILayout.EndVertical(); // End of Hand control
-
-
-            GUILayout.BeginVertical("box"); // Jaw control box       
-            if (GUILayout.Button(new GUIContent(closeMouth ? closedMouthImage : openMouthImage, string.Format("STATUS: " + (closeMouth ? "ON" : "OFF") + ":  Toggle to CLOSE THE JAW of any animation imported without proper jaw information.  Toggling this ON will overwrite any jaw animation.  Toggling OFF will use the jaw animation from the selected animation clip.")), GUILayout.Width(largeIconDim), GUILayout.Height(largeIconDim)))
+            EditorGUI.BeginChangeCheck();
+            expressionBlendShapeTranspose = GUILayout.Toggle(expressionBlendShapeTranspose, new GUIContent("Expression Blendshapes Transposed at Runtime", "Instead of using a very large number of animation tracks to animate the blend shapes on face objects (e.g. eyebrows, beards etc), the blend shape values on the head are instead copied to all of the applicable objects on the model. This has a lower performance overhead and means that the animations are considerably smaller."));
+            if (EditorGUI.EndChangeCheck())
             {
-                closeMouth = !closeMouth;
-                CloseMouthToggle(closeMouth);
+                if (expressionBlendShapeTranspose)
+                {
+                    createFullAnimationTrack = false;
+                    SceneView.RepaintAll();
+                }
             }
-            GUILayout.EndVertical(); // End of Jaw control
-            
+            EditorGUI.BeginChangeCheck();
+            expressionConstrain = GUILayout.Toggle(expressionConstrain, new GUIContent("Constraint Blendshapes Calculated at Runtime", "The constraint blendshapes (those beginning with 'C_') will be calculated from the values of the corresponding source blend shapes. Limits will also be applied to certain blend shapes based on the limit definitions in the CC5 facial profile editor."));
+            if (EditorGUI.EndChangeCheck())
+            {
+                if (expressionBlendShapeTranspose)
+                {
+                    createFullAnimationTrack = false;
+                    SceneView.RepaintAll();
+                }
+            }
+
+            GUILayout.Space(4f);
+
+            GUILayout.Label("Legacy Method", styles.smallTitleLabel);
+            EditorGUI.BeginChangeCheck();
+            createFullAnimationTrack = GUILayout.Toggle(createFullAnimationTrack, new GUIContent("Animate all face objects individually", "This will construct animation tracks for every blend shape on every applicable face object (e.g. eyebrows, beards etc). This reults in a very large animation with a higher performance overhead than the runtime transpose method."));
+            if (EditorGUI.EndChangeCheck())
+            {
+                if (createFullAnimationTrack)
+                {
+                    expressionDrivenBones = false;
+                    expressionBlendShapeTranspose = false;
+                    expressionConstrain = false;
+                    SceneView.RepaintAll();
+                }
+            }
+
+            GUILayout.Space(4f);
+
+            GUILayout.BeginHorizontal();
+
+            GUILayout.BeginVertical();
+            string message = string.Empty;
+            int lines = 0;
+            message += expressionDrivenBones ? "- Expressions will directly control all face bones at runtime.\n" : string.Empty;
+            lines += expressionDrivenBones ? 2 : 0;
+            message += expressionBlendShapeTranspose ? "- Expressions will be copied to all face parts at runtime.\n" : string.Empty;
+            lines += expressionBlendShapeTranspose ? 2 : 0;
+            message += expressionConstrain ? "- Expression Constraints will be calculated at runtime." : string.Empty;
+            lines += expressionConstrain ? 2 : 0;
+            message += createFullAnimationTrack ? "- Animation tracks will be created for each blendshape on each face part (legacy method)." : "";
+            lines += createFullAnimationTrack ? 5 : 0;
+            bool noSelection = !expressionDrivenBones && !expressionBlendShapeTranspose && !createFullAnimationTrack;
+            if (noSelection)
+            {
+                message += "No action selected, please select Blend Shape retargetting method";
+                lines += 2;
+            }
+
+            EditorGUILayout.SelectableLabel(message, styles.textFieldStyle, GUILayout.Width(220f), GUILayout.Height(15f * lines));//(EditorGUIUtility.singleLineHeight * lines));
+
+            GUILayout.EndVertical();
+
             GUILayout.BeginVertical("box"); // Blendshapes control box
             Color backgroundColor = GUI.backgroundColor;
             Color tint = Color.green;
             FacialProfile mfp = AnimPlayerGUI.MeshFacialProfile;
             FacialProfile cfp = AnimPlayerGUI.ClipFacialProfile;
-            if (!mfp.HasFacialShapes || !cfp.HasFacialShapes)
+            if (!mfp.HasFacialShapes || !cfp.HasFacialShapes || noSelection)
             {
                 GUI.enabled = false;
                 tint = backgroundColor;
             }
             if (!mfp.IsSameProfileFrom(cfp))
             {
-                if (mfp.expressionProfile != ExpressionProfile.None && 
+                if (mfp.expressionProfile != ExpressionProfile.None &&
                     cfp.expressionProfile != ExpressionProfile.None)
                 {
                     // ExpPlus or Extended to Standard will not retarget well, show a red warning color
@@ -347,16 +468,80 @@ namespace Reallusion.Import
                     }
                 }
             }
-            
+
             GUI.backgroundColor = Color.Lerp(backgroundColor, tint, 0.25f);
-            if (GUILayout.Button(new GUIContent(blendshapeImage, "Copy all BlendShape animations from the selected animation clip to all of the relevant objects (e.g. facial hair) in the selected Scene Model."), GUILayout.Width(largeIconDim), GUILayout.Height(largeIconDim)))
+            if (GUILayout.Button(new GUIContent(blendshapeImage, "Retarget Blendshapes."), GUILayout.Width(largeIconDim), GUILayout.Height(largeIconDim)))
             {
-                RetargetBlendShapes(OriginalClip, WorkingClip, CharacterAnimator.gameObject);
-                AnimPlayerGUI.UpdateAnimator();
+                EditorApplication.delayCall += RetargetButtonAction;
             }
+
             GUI.backgroundColor = backgroundColor;
             GUI.enabled = true;
+
             GUILayout.EndVertical();
+
+            GUILayout.Space(10f);
+
+            GUILayout.EndHorizontal();
+
+            GUILayout.EndVertical();
+        }
+
+        private static void RetargetButtonAction()
+        {
+            logOnce = true;
+            RetargetBlendShapes(OriginalClip, WorkingClip, CharacterAnimator.gameObject, null, false, expressionDrivenBones, expressionBlendShapeTranspose, expressionConstrain, createFullAnimationTrack);
+            AnimPlayerGUI.UpdateAnimator();
+        }
+
+        public static void DrawAnimationadjustmentControls()
+        {
+            GUILayout.BeginVertical();// All retarget controls
+            GUILayout.Space(4f);
+            // Horizontal Group of 3 controls `Hand` `Jaw` and `Blendshapes`
+            GUILayout.BeginHorizontal();
+            GUILayout.BeginVertical(); // ("box", GUILayout.Width(baseControlWidth));  // Hand control box - Width used to impose layout footprint for overlay
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(12f);
+
+            if (GUILayout.Button(new GUIContent(handImage, "Switch between hand modes - Original animation info - Static open hand pose - Static closed hand pose. (This only affects pose of the fingers)."), GUILayout.Width(largeIconDim), GUILayout.Height(largeIconDim)))
+            {
+                handPose++;
+                if (handPose > 2) handPose = 0;
+                ApplyPose(handPose);
+            }
+            GUILayout.BeginVertical();
+
+            GUIStyle radioSelectionStyle = new GUIStyle(EditorStyles.radioButton);
+            radioSelectionStyle.padding = new RectOffset(24, 0, 0, 0);
+            GUIContent[] contents = new GUIContent[]
+            {
+                new GUIContent("Original", "Use the hand pose/animation from the original animation clip."),
+                new GUIContent("Open", "Use a static neutral open hand pose for the full animation clip."),
+                new GUIContent("Closed", "Use a static neutral closed hand pose for the full animation clip.")
+            };
+            EditorGUI.BeginChangeCheck();
+            handPose = GUILayout.SelectionGrid(handPose, contents, 1, radioSelectionStyle);
+            if (EditorGUI.EndChangeCheck())
+            {
+                ApplyPose(handPose);
+            }
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+            GUILayout.EndVertical(); // End of Hand control
+
+            GUILayout.FlexibleSpace();
+
+            GUILayout.BeginVertical();// ("box"); // Jaw control box       
+            if (GUILayout.Button(new GUIContent(closeMouth ? closedMouthImage : openMouthImage, string.Format("STATUS: " + (closeMouth ? "ON" : "OFF") + ":  Toggle to CLOSE THE JAW of any animation imported without proper jaw information.  Toggling this ON will overwrite any jaw animation.  Toggling OFF will use the jaw animation from the selected animation clip.")), GUILayout.Width(largeIconDim), GUILayout.Height(largeIconDim)))
+            {
+                closeMouth = !closeMouth;
+                CloseMouthToggle(closeMouth);
+            }
+            GUILayout.EndVertical(); // End of Jaw control
+
+            GUILayout.Space(10f);
+
             GUILayout.EndHorizontal(); // End of Blendshapes control
 
             // Control box for animation curve adjustment sliders
@@ -389,7 +574,7 @@ namespace Reallusion.Import
             GUILayout.EndHorizontal();
             if (EditorGUI.EndChangeCheck())
             {
-                OffsetArmsFB();                
+                OffsetArmsFB();
             }
 
             EditorGUI.BeginChangeCheck();
@@ -399,7 +584,7 @@ namespace Reallusion.Import
             GUILayout.EndHorizontal();
             if (EditorGUI.EndChangeCheck())
             {
-                OffsetLegs();                
+                OffsetLegs();
             }
 
             EditorGUI.BeginChangeCheck();
@@ -409,7 +594,7 @@ namespace Reallusion.Import
             GUILayout.EndHorizontal();
             if (EditorGUI.EndChangeCheck())
             {
-                OffsetHeel();                
+                OffsetHeel();
             }
 
             EditorGUI.BeginChangeCheck();
@@ -423,28 +608,49 @@ namespace Reallusion.Import
             }
             GUILayout.EndVertical(); // End of animation curve adjustment sliders
 
+            GUILayout.EndVertical(); // All retarget controls
+            // End of retarget controls
+        }
+
+        public static void LowerControlGUI()
+        {
             // Lower close, reset and save controls
             GUILayout.BeginHorizontal();
-            GUILayout.BeginVertical("box");  // close button
+            GUILayout.BeginVertical();
+            GUILayout.Space(36f);
+            GUILayout.EndVertical();
+
+            GUILayout.BeginVertical();// ("box");  // close button
+            GUILayout.FlexibleSpace();
             if (GUILayout.Button(new GUIContent(EditorGUIUtility.IconContent("d_clear").image, "Close this window."), GUILayout.Width(smallIconDim), GUILayout.Height(smallIconDim)))
             {
                 CloseRetargeter();
             }
-            GUILayout.EndVertical();
             GUILayout.FlexibleSpace();
-            GUILayout.BeginVertical("box");  // hold button
+            GUILayout.EndVertical();
+
+            GUILayout.FlexibleSpace();
+
+            GUILayout.BeginVertical();// ("box");  // hold button
+            GUILayout.FlexibleSpace();
             if (GUILayout.Button(new GUIContent(holdValues ? lockedImage : unlockedImage, string.Format("STATUS: " + (holdValues ? "LOCKED VALUES : slider settings are retained when animation is changed." : "UNLOCKED VALUES : slider settings are reset when animation is changed."))), GUILayout.Width(smallIconDim), GUILayout.Height(smallIconDim)))
             {
                 holdValues = !holdValues;
             }
+            GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
-            GUILayout.BeginVertical("box");  // reset button
+
+            GUILayout.BeginVertical();// ("box");  // reset button
+            GUILayout.FlexibleSpace();
             if (GUILayout.Button(new GUIContent(resetImage, "Reset all slider settings and applied modifications."), GUILayout.Width(smallIconDim), GUILayout.Height(smallIconDim)))
-            {                
+            {
                 ResetClip();
             }
+            GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
-            GUILayout.BeginVertical("box"); // save button
+
+            GUILayout.BeginVertical();// ("box"); // save button
+            GUILayout.FlexibleSpace();
             if (GUILayout.Button(new GUIContent(saveImage, "Save the modified animation to the 'Project Assets'.  This will create a new animation in the 'Home Directory' of the selected model named <Model Name>_<Animation Name>.anim"), GUILayout.Width(smallIconDim), GUILayout.Height(smallIconDim)))
             {
                 GameObject scenePrefab = AnimPlayerGUI.CharacterAnimator.gameObject;
@@ -454,13 +660,28 @@ namespace Reallusion.Import
                     string characterFbxPath = AssetDatabase.GetAssetPath(fbxAsset);
                     string assetPath = GenerateClipAssetPath(OriginalClip, characterFbxPath);
                     WriteAnimationToAssetDatabase(WorkingClip, assetPath, true);
+                    SaveBoneDriverChangesToPrefab(scenePrefab);
                 }
             }
+            GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
-            GUILayout.EndHorizontal(); // End of reset and save controls
 
-            GUILayout.EndVertical();
-            // End of retarget controls
+            GUILayout.EndHorizontal(); // End of reset and save controls
+        }
+
+        private static void LogBoneDriverSettingsChanges(GameObject root, GameObject bd, bool drive, bool transpose, bool constrain, bool legacy)
+        {
+            if (logOnce)
+            {
+                string conj = drive && transpose ? " and " : string.Empty;
+                string driveStr = drive ? "'Expressions Drive Face Bones' is ENABLED" : string.Empty;
+                string transposeStr = transpose ? "'Expressions are copied to all face parts' is ENABLED" : string.Empty;
+                string legacyStr = legacy ? "Both 'Expressions Drive Face Bones' and Expressions are copied to all face parts' are now DISABLED in the existing BoneDriver" : string.Empty;
+                string constrainStr = constrain ? "\nExpression 'Constraints' and 'Limits' will be applied." : string.Empty;
+                string text = $"Settings in the BoneDriver on {bd.name} in the {root.name} prefab will be changed and applied to the prefab.\n{driveStr}{conj}{transposeStr}{legacyStr}{constrainStr}";
+                Debug.Log(text);
+                logOnce = false;
+            }
         }
 
         public static bool CanClipLoop(AnimationClip clip)
@@ -606,7 +827,7 @@ namespace Reallusion.Import
             OffsetHeel();
             OffsetHeight();
             CloseMouthToggle(closeMouth);
-            ApplyPose(handPose);            
+            ApplyPose(handPose);
         }
 
         static void SetEditorCurves(AnimationClip clip, List<EditorCurveBinding> bindings, List<AnimationCurve> curves)
@@ -625,7 +846,7 @@ namespace Reallusion.Import
         static void OffsetShoulders()
         {
             if (!(OriginalClip && WorkingClip)) return;
-                        
+
             List<EditorCurveBinding> applicableBindings = new List<EditorCurveBinding>();
             List<AnimationCurve> applicableCurves = new List<AnimationCurve>();
 
@@ -706,10 +927,10 @@ namespace Reallusion.Import
                 }
                 applicableBindings.Add(bind.Value);
                 applicableCurves.Add(curve);
-            }            
+            }
             AnimationClip swapClip = AnimPlayerGUI.CloneClip(WorkingClip);
             SetEditorCurves(swapClip, applicableBindings, applicableCurves);
-            AnimPlayerGUI.SelectOverrideAnimationWithoutReset(swapClip, AnimPlayerGUI.animatorOverrideController);            
+            AnimPlayerGUI.SelectOverrideAnimationWithoutReset(swapClip, AnimPlayerGUI.animatorOverrideController);
             AnimPlayerGUI.UpdateAnimator();
         }
 
@@ -731,7 +952,7 @@ namespace Reallusion.Import
 
                 switch (bind.Key)
                 {
-                    case lArm:                    
+                    case lArm:
                         {
                             scale = arScale;
                             eval = true;
@@ -739,7 +960,7 @@ namespace Reallusion.Import
                             includeBackgroundVal = true;
                         }
                         break;
-                    case rArm:                    
+                    case rArm:
                         {
                             scale = arScale;
                             eval = true;
@@ -805,7 +1026,7 @@ namespace Reallusion.Import
                 Keyframe[] keys = curve.keys;
 
                 switch (bind.Key)
-                {                    
+                {
                     case lArmFB:
                         {
                             scale = arScale;
@@ -821,7 +1042,7 @@ namespace Reallusion.Import
                             subtract = false;
                             includeBackgroundVal = false;
                         }
-                        break;                    
+                        break;
                 }
 
                 float diff = armFBOffset * scale;
@@ -1064,8 +1285,7 @@ namespace Reallusion.Import
 
         static float logtime = 0f;
 
-        public static void CopyCurve(AnimationClip originalClip, AnimationClip workingClip, string goName, 
-                                     string targetPropertyName, EditorCurveBinding sourceCurveBinding)
+        public static void CopyCurve(AnimationClip originalClip, AnimationClip workingClip, string goName, string targetPropertyName, EditorCurveBinding sourceCurveBinding)
         {
             float time = Time.realtimeSinceStartup;
 
@@ -1076,7 +1296,7 @@ namespace Reallusion.Import
                 propertyName = targetPropertyName
             };
 
-            if (AnimationUtility.GetEditorCurve(workingClip, workingBinding) == null || 
+            if (AnimationUtility.GetEditorCurve(workingClip, workingBinding) == null ||
                 targetPropertyName != sourceCurveBinding.propertyName)
             {
                 AnimationCurve workingCurve = AnimationUtility.GetEditorCurve(originalClip, sourceCurveBinding);
@@ -1092,7 +1312,7 @@ namespace Reallusion.Import
 
             if (curve != null)
             {
-                if (curve.length > 2) return true;
+                //if (curve.length > 2) return true;
                 for (int i = 0; i < curve.length; i++)
                 {
                     if (Mathf.Abs(curve.keys[i].value) > 0.001f) return true;
@@ -1102,14 +1322,11 @@ namespace Reallusion.Import
             return false;
         }
 
-        public static void RetargetBlendShapes(AnimationClip originalClip, AnimationClip workingClip, 
-            GameObject targetCharacterModel, bool log = true)
+        public static void RetargetBlendShapes(AnimationClip originalClip, AnimationClip workingClip,
+            GameObject targetCharacterModel, CharacterInfo info = null, bool log = true, bool FeatureUseBoneDriver = false, bool FeatureUseExpressionTranspose = false, bool FeatureUseConstraintData = false, bool legacyFeatureOverride = false)
         {
             if (!(originalClip && workingClip)) return;
 
-            const string blendShapePrefix = "blendShape."; 
-            
-            Transform[] targetAssetData = targetCharacterModel.GetComponentsInChildren<Transform>();
             FacialProfile meshProfile = FacialProfileMapper.GetMeshFacialProfile(targetCharacterModel);
             if (!meshProfile.HasFacialShapes)
             {
@@ -1137,7 +1354,488 @@ namespace Reallusion.Import
                 }
             }
 
+            bool useBoneDriver = (info != null && info.FeatureUseBoneDriver) || FeatureUseBoneDriver;
+            bool useBlendTranspose = (info != null && info.FeatureUseExpressionTranspose) || FeatureUseExpressionTranspose;
+            bool useConstraintData = (info != null && info.FeatureUseConstraintData) || FeatureUseConstraintData;
+            if (!useBoneDriver && !useBlendTranspose && !useConstraintData)
+                legacyFeatureOverride = true;
+
+            if (legacyFeatureOverride)
+            {
+                RetargetBlendShapesToAllMeshes(originalClip, workingClip, targetCharacterModel, meshProfile, animProfile);
+            }
+            else
+            {
+                if (useBoneDriver || useBlendTranspose || useConstraintData)
+                {
+
+                    if (!CheckBoneDriver(targetCharacterModel, out GameObject bd, useBoneDriver, useBlendTranspose, useConstraintData))
+                    {
+                        Debug.Log("RetargetBlendShapes - No BoneDriver available."); EditorUtility.ClearProgressBar();
+                        return;
+                    }
+                    else
+                    {
+                        ApplyBoneDriverSettings(targetCharacterModel, bd, useBoneDriver, useBlendTranspose, useConstraintData);
+                    }
+                }
+                if (useBoneDriver)
+                {
+                    // Note: No pruning bone tracks ...
+                    // remove animated constraint tracks and any tracks for bones that are now driven by expressions
+                    // PruneTargettedMechanimTracks(originalClip, workingClip, targetCharacterModel, useBoneDriver, useBlendTranspose, useConstraintData);
+                }
+
+                if (useBlendTranspose)
+                {
+                    PruneBlendShapesToSourceMeshes(workingClip, targetCharacterModel, meshProfile, animProfile, useConstraintData);
+                }
+            }
+            logOnce = false;
+            EditorUtility.ClearProgressBar();
+        }
+
+        public static bool CheckBoneDriver(GameObject targetCharacterModel, out GameObject bd, bool drive = false, bool transpose = false, bool constrain = false)
+        {
+            bd = BoneEditor.GetBoneDriverGameObjectReflection(targetCharacterModel);
+            if (bd == null)
+            {
+                Component co = BoneEditor.AddBoneDriverToBaseBody(targetCharacterModel, drive, transpose);
+                if (co)
+                {
+                    bd = co.gameObject;
+                    return true;
+                }
+            }
+            else
+            {
+                return true;
+            }
+            return false;
+        }
+
+        public static void ApplyBoneDriverSettings(GameObject targetCharacterModel, GameObject bd, bool drive = false, bool transpose = false, bool constrain = false)
+        {
+            Component boneDrivercomp = BoneEditor.GetBoneDriverComponentReflection(targetCharacterModel);
+            BoneEditor.SetupBoneDriverFlags(bd, drive, transpose, constrain);
+
+            // https://docs.unity3d.com/6000.0/Documentation/ScriptReference/PrefabUtility.RecordPrefabInstancePropertyModifications.html
+            PrefabUtility.RecordPrefabInstancePropertyModifications(boneDrivercomp);
+            LogBoneDriverSettingsChanges(targetCharacterModel, bd, drive, transpose, constrain, false);
+        }
+
+        public static void SaveBoneDriverChangesToPrefab(GameObject targetCharacterModel)
+        {
+
+            Type BoneDriver = null;
+            if (BoneDriver == null)
+            {
+                BoneDriver = Physics.GetTypeInAssemblies("Reallusion.Runtime.BoneDriver");
+                if (BoneDriver == null)
+                {
+                    Debug.LogWarning("SetupBoneDriverFlags cannot find the <BoneDriver> class. Go to menu 'Reallusion -> Check for updates' and install the latest runtime package.");
+                    return;
+                }
+            }
+
+            if (PrefabUtility.GetPrefabInstanceStatus(targetCharacterModel) != PrefabInstanceStatus.NotAPrefab)
+            {
+                try
+                {
+                    List<AddedComponent> addedComponents = PrefabUtility.GetAddedComponents(targetCharacterModel);
+                    foreach (AddedComponent add in addedComponents)
+                    {
+                        if (add.instanceComponent.GetType() == BoneDriver)
+                        {
+                            add.Apply();
+                        }
+                    }
+
+                    List<ObjectOverride> overrides = PrefabUtility.GetObjectOverrides(targetCharacterModel);
+                    foreach (var ovr in overrides)
+                    {
+
+                        if (ovr.instanceObject.GetType() == BoneDriver)
+                        {
+                            ovr.Apply();
+                        }
+                    }
+                }
+                catch
+                {
+                    Util.LogWarn("Unable to apply prefab instance.");
+                }
+            }
+        }
+
+        public static (bool, bool, bool) GetBoneDriverSettingsReflection()
+        {
+            try
+            {
+                if (CharacterAnimator == null) return (false, false, false);
+
+                GameObject obj = CharacterAnimator.gameObject;
+                Component boneDriver = BoneEditor.GetBoneDriverComponentReflection(obj);
+                if (boneDriver)
+                {
+                    bool bones = false, expressions = false, constraint = false;
+                    if (Physics.GetTypeField(boneDriver, "bones", out object b))
+                    {
+                        bones = (bool)b;
+                    }
+                    if (Physics.GetTypeField(boneDriver, "expressions", out object e))
+                    {
+                        expressions = (bool)e;
+                    }
+                    if (Physics.GetTypeField(boneDriver, "constraint", out object c))
+                    {
+                        constraint = (bool)c;
+                    }
+                    return (bones, expressions, constraint);
+                }
+                else
+                {
+                    return (false, false, false);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.Log($"Unable to retrieve Bonedriver info: {e.Message}");
+                return (false, false, false);
+            }
+        }
+
+        public static void PruneTargettedMechanimTracks(AnimationClip originalClip, AnimationClip workingClip, GameObject targetCharacterModel, bool drive = false, bool transpose = false, bool constrain = false)
+        {
+            // needs a set up bonedriver reference to interrogate for the expression glossary
+            if (!CheckBoneDriver(targetCharacterModel, out GameObject bd, drive, transpose, constrain)) return;
+            //ApplyBoneDriverSettings(targetCharacterModel, bd, drive, transpose, constrain);
+
+            if (!bd) return;
+            SkinnedMeshRenderer smr = bd.GetComponent<SkinnedMeshRenderer>();
+            if (smr == null) return;
+
+            Dictionary<string, List<string>> dict = BoneEditor.RetrieveBoneDictionary(bd);
+            // check CC_Base_Body (implicitly the bonedriver bearing gameobject) for blendshapes -  if 
+            // all blendshapes are present which influence a bone then purge the mechanim tracks
+            // associated with that bone - to allow only the expression to deform the bone
+
             EditorCurveBinding[] sourceCurveBindings = AnimationUtility.GetCurveBindings(workingClip);
+
+            string[] bonesToEvaluate = new string[] { "CC_Base_JawRoot", "CC_Base_L_Eye", "CC_Base_R_Eye", "CC_Base_Head" };
+
+            string[] jawCurves = new string[] { "Jaw Close", "Jaw Left-Right" };
+            string[] lEyeCurves = new string[] { "Left Eye Down-Up", "Left Eye In-Out" };
+            string[] rEyeCurves = new string[] { "Right Eye Down-Up", "Right Eye In-Out" };
+            string[] headCurves = new string[] { "Head Nod Down-Up", "Head Tilt Left-Right", "Head Turn Left-Right" };
+
+            // Identify all curve bindings for constraint blendshapes (starting with "C_") and purge them
+            List<EditorCurveBinding> animatedConstraintBindings = new List<EditorCurveBinding>();
+            try
+            {
+                int n = 0;
+                foreach (var binding in sourceCurveBindings)
+                {
+                    n++;
+                    float progress = (float)n / (float)sourceCurveBindings.Length;
+                    EditorUtility.DisplayProgressBar($"Determining Animated Constraints...", $"Working on {binding.propertyName} ", progress);
+                    if (binding.propertyName.ToLower().StartsWith("blendshape.c_"))
+                    {
+                        animatedConstraintBindings.Add(binding);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.Log(e.Message);
+            }
+            PurgeBindings(animatedConstraintBindings.ToArray(), workingClip);
+
+            foreach (var boneToEvaluate in bonesToEvaluate)
+            {
+                //Debug.Log($"boneToEvaluate {boneToEvaluate}");
+                bool complete = true;
+                dict.TryGetValue(boneToEvaluate, out List<string> blendShapes);
+                // edge case - avoid purging tracks where the expression list for the bone is empty or null
+                if (blendShapes != null)
+                {
+                    if (blendShapes.Count > 0)
+                    {
+                        foreach (var blendShape in blendShapes)
+                        {
+                            //Debug.Log($"testing blendShape = {blendShape}");
+                            if (smr.sharedMesh.GetBlendShapeIndex(blendShape) == -1) complete = false;
+                        }
+                    }
+                    else
+                    {
+                        complete = false;
+                    }
+                }
+                else
+                {
+                    complete = false;
+                }
+                //Debug.Log($"boneToEvaluate {boneToEvaluate} complete = {complete}");
+                if (complete)
+                {
+                    switch (boneToEvaluate)
+                    {
+                        case "CC_Base_JawRoot":
+                            {
+                                PurgeBindings(sourceCurveBindings, jawCurves, workingClip);
+                                break;
+                            }
+                        case "CC_Base_L_Eye":
+                            {
+                                PurgeBindings(sourceCurveBindings, lEyeCurves, workingClip);
+                                break;
+                            }
+                        case "CC_Base_R_Eye":
+                            {
+                                PurgeBindings(sourceCurveBindings, rEyeCurves, workingClip);
+                                break;
+                            }
+                        case "CC_Base_Head":
+                            {
+                                PurgeBindings(sourceCurveBindings, headCurves, workingClip);
+                                break;
+                            }
+                    }
+                }
+            }
+        }
+        #region Track Purging
+
+        public static void PurgeBindings(EditorCurveBinding[] bindings, AnimationClip clip)
+        {
+            try
+            {
+                AnimationCurve[] curves = new AnimationCurve[bindings.Length];
+                for (int i = 0; i < curves.Length; i++) { curves[i] = null; }
+                Debug.Log($"Purging Bindings (Length {curves.Length})");
+                AnimationUtility.SetEditorCurves(clip, bindings, curves);
+            }
+            catch (Exception e)
+            {
+                Debug.Log($"Purging Bindings Error: {e.Message}");
+            }
+        }
+
+        public static void PurgeBindings(EditorCurveBinding[] sourceCurveBindings, string[] bindings, AnimationClip clip)
+        {
+            try
+            {
+                int n = 0;
+                List<EditorCurveBinding> bindingsToPurge = new List<EditorCurveBinding>();
+                foreach (string binding in bindings)
+                {
+                    n++;
+                    float progress = (float)n / (float)sourceCurveBindings.Length;
+                    EditorUtility.DisplayProgressBar($"Finding unnecessary tracks...", $"Evaluating on {binding} ", progress);
+
+                    var targetBindings = sourceCurveBindings.ToList().FindAll(x => x.propertyName == binding);
+                    if (targetBindings.Count > 0)
+                    {
+                        foreach (var tgt in targetBindings)
+                        {
+                            bindingsToPurge.Add(tgt);
+                        }
+                    }
+                    else
+                    {
+                        Debug.Log($"INFO: Cannot Find {binding}");
+                    }
+                }
+                EditorUtility.DisplayProgressBar($"Removing unnecessary tracks...", $"Working...", 0.5f);
+                PurgeBindings(bindingsToPurge.ToArray(), clip);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"Purging Error {e.Message}");
+            }
+        }
+        #endregion
+
+        #region Blendshape Pruning
+        public static void PruneBlendShapesToSourceMeshes(AnimationClip workingClip, GameObject targetCharacterModel, FacialProfile meshProfile, FacialProfile animProfile, bool driveConstraints = false)
+        {
+            const string blendShapePrefix = "blendShape.";
+            // purge all blendshape curves from working anim
+            // copy all remappable curves from original to working for the source mesh only
+
+            GameObject source = RL.FindExpressionSourceMesh(targetCharacterModel);
+            if (!source)
+            {
+                Util.LogInfo("No Expression Source Mesh Found!");
+                return;
+            }
+
+            List<EditorCurveBinding> workingClipBindings = AnimationUtility.GetCurveBindings(workingClip).ToList();
+            // Data looks like this:
+            // path: "Circle_Sparse"  propertyName: "blendShape.Tongue_Twist_R"  for blendshapes on a mesh
+            // path: "" propertyName: "Jaw Close"
+            // path: "" propertyName: "Jaw Left-Right" for mechanim tracks
+
+            // get all meshes into a list prioritized by the source meshes
+            SkinnedMeshRenderer[] allSmrs = targetCharacterModel.GetComponentsInChildren<SkinnedMeshRenderer>();
+            List<SkinnedMeshRenderer> targetSmrs = new List<SkinnedMeshRenderer>();
+            string[] sourceMeshes = new string[] { source.name, "CC_Base_Tongue", "CC_Base_Eye", "CC_Base_EyeOcclusion", "CC_Base_TearLine", };
+            try
+            {
+                foreach (string meshName in sourceMeshes)
+                {
+                    var s = allSmrs.FirstOrDefault(x => x.name == meshName);
+                    if (s)
+                        targetSmrs.Add(s);
+                }
+
+                foreach (var smr in allSmrs)
+                {
+                    EditorUtility.DisplayProgressBar($"Analyzing SkinnedMeshRenderers...", $"Working on {smr.name} ", 0.45f);
+                    if (smr.sharedMesh && smr.sharedMesh.blendShapeCount > 0)
+                    {
+                        if (!targetSmrs.Contains(smr))
+                            targetSmrs.Add(smr);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.Log(e.Message);
+            }
+            // match the path of each binding in the working clip to a list member of allMeshes and store the binding of the first instance of that blendshape.
+            Dictionary<string, EditorCurveBinding> uniqueBindings = new Dictionary<string, EditorCurveBinding>();
+
+            try
+            {
+                for (int i = 0; i < workingClipBindings.Count; i++)
+                {
+                    EditorCurveBinding binding = workingClipBindings[i];
+                    float progress = (float)i / (float)workingClipBindings.Count;
+                    EditorUtility.DisplayProgressBar($"Analyzing EditorCurveBindings...", $"Working on {binding.propertyName} ", progress);
+                    bool isConstraint = binding.propertyName.StartsWith($"{blendShapePrefix}C_");
+                    if (isConstraint && driveConstraints) continue;
+
+                    if (binding.propertyName.StartsWith(blendShapePrefix))
+                    {
+                        string targetPath = string.Empty;
+                        string blendShapeName = binding.propertyName.Substring(blendShapePrefix.Length);
+
+                        string targetBlendShapeName = meshProfile.GetMappingFrom(blendShapeName, animProfile);
+                        List<string> targetBlendshapeNames = null;
+                        if (!string.IsNullOrEmpty(targetBlendShapeName))
+                        {
+                            targetBlendshapeNames = FacialProfileMapper.GetMultiShapeNames(targetBlendShapeName);
+                        }
+                        if (targetBlendshapeNames != null)
+                        {
+                            for (int j = 0; j < targetBlendshapeNames.Count; j++)
+                            {
+                                targetBlendShapeName = targetBlendshapeNames[j];
+                                string targetPropertyName = $"{blendShapePrefix}{targetBlendShapeName}";
+
+                                if (!uniqueBindings.ContainsKey(targetPropertyName))
+                                {
+                                    foreach (var smr in targetSmrs)
+                                    {
+                                        int index = smr.sharedMesh.GetBlendShapeIndex(targetBlendShapeName);
+                                        if (index != -1)
+                                        {
+                                            targetPath = smr.name;
+                                            break;
+                                        }
+                                    }
+                                    if (!string.IsNullOrEmpty(targetPath))
+                                    {
+                                        // copy the binding into a new curve
+                                        if (binding.path != targetPath || binding.propertyName != targetPropertyName)
+                                        {
+                                            EditorCurveBinding newBinding = ReassignClipBinding(workingClip, binding, targetPath, targetPropertyName);
+                                            uniqueBindings.Add(newBinding.propertyName, newBinding);
+                                            workingClipBindings.Add(newBinding);
+                                        }
+                                        else
+                                        {
+                                            uniqueBindings.Add(binding.propertyName, binding);
+                                        }
+
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            try
+            {
+                int n = 0;
+                List<EditorCurveBinding> purgeList = new List<EditorCurveBinding>();
+                // now remove everything not on the unique list
+                foreach (var binding in workingClipBindings)
+                {
+                    n++;
+                    float progress = (float)n / (float)workingClipBindings.Count;
+                    EditorUtility.DisplayProgressBar($"Cleaning EditorCurveBindings...", $"Working on {binding.propertyName} ", progress);
+                    if (!uniqueBindings.ContainsValue(binding))
+                    {
+                        if (binding.propertyName.StartsWith(blendShapePrefix))
+                        {
+                            purgeList.Add(binding);
+                        }
+                    }
+                    else
+                    {
+                        Debug.Log("Retaining blendshape " + binding.propertyName);
+                    }
+                }
+                PurgeBindings(purgeList.ToArray(), workingClip);
+            }
+            catch (Exception e)
+            {
+                Debug.Log(e.Message);
+            }
+        }
+        #endregion
+
+        public static EditorCurveBinding ReassignClipBinding(AnimationClip workingClip, EditorCurveBinding binding, string targetPath, string targetPropertyName)
+        {
+            EditorCurveBinding newBinding = new EditorCurveBinding()
+            {
+                path = targetPath,
+                propertyName = targetPropertyName,
+                type = typeof(SkinnedMeshRenderer)
+            };
+
+            AnimationCurve curve = AnimationUtility.GetEditorCurve(workingClip, binding);
+            try
+            {
+                AnimationUtility.SetEditorCurve(workingClip, newBinding, curve);
+            }
+            catch (Exception e)
+            {
+                Debug.Log($"{workingClip.name} {curve.length}");
+                Debug.Log(e.Message);
+            }
+            return newBinding;
+        }
+
+        public static void RetargetBlendShapesToAllMeshes(AnimationClip originalClip, AnimationClip workingClip, GameObject targetCharacterModel, FacialProfile meshProfile, FacialProfile animProfile, bool log = true)
+        {
+            Debug.Log("RetargetBlendShapesToAllMeshes");
+            GameObject bd = BoneEditor.GetBoneDriverGameObjectReflection(targetCharacterModel);
+            if (bd != null)
+            {
+                ApplyBoneDriverSettings(targetCharacterModel, bd, false, false, false);
+            }
+            else { Debug.Log("No Bonedriver found - Can safely ignore when retargetting to all meshes"); }
+
+            EditorCurveBinding[] sourceCurveBindings = AnimationUtility.GetCurveBindings(workingClip);
+            Transform[] targetAssetData = targetCharacterModel.GetComponentsInChildren<Transform>();
+
+            const string blendShapePrefix = "blendShape.";
 
             // Find all of the blendshape relevant binding paths that are not needed in the target animation        
             List<string> uniqueSourcePaths = new List<string>();
@@ -1176,14 +1874,14 @@ namespace Reallusion.Import
             string report = "";
 
             // build a cache of the blend shape names and their curve bindings:
-            Dictionary<string, EditorCurveBinding> cache = new Dictionary<string, EditorCurveBinding>();            
+            Dictionary<string, EditorCurveBinding> cache = new Dictionary<string, EditorCurveBinding>();
             for (int i = 0; i < sourceCurveBindings.Length; i++)
             {
-                if (CurveHasData(sourceCurveBindings[i], workingClip) && 
+                if (CurveHasData(sourceCurveBindings[i], workingClip) &&
                     sourceCurveBindings[i].propertyName.StartsWith(blendShapePrefix))
                 {
                     string blendShapeName = sourceCurveBindings[i].propertyName.Substring(blendShapePrefix.Length);
-                    string profileBlendShapeName = meshProfile.GetMappingFrom(blendShapeName, animProfile);                    
+                    string profileBlendShapeName = meshProfile.GetMappingFrom(blendShapeName, animProfile);
                     if (!string.IsNullOrEmpty(profileBlendShapeName))
                     {
                         List<string> multiProfileName = FacialProfileMapper.GetMultiShapeNames(profileBlendShapeName);
@@ -1222,10 +1920,10 @@ namespace Reallusion.Import
                     for (int j = 0; j < smr.sharedMesh.blendShapeCount; j++)
                     {
                         string blendShapeName = smr.sharedMesh.GetBlendShapeName(j);
-                        string targetPropertyName = blendShapePrefix + blendShapeName;                        
+                        string targetPropertyName = blendShapePrefix + blendShapeName;
 
                         if (cache.TryGetValue(blendShapeName, out EditorCurveBinding sourceCurveBinding))
-                        {                            
+                        {
                             CopyCurve(originalClip, workingClip, go.name, targetPropertyName, sourceCurveBinding);
 
                             if (!mappedBlendShapes.Contains(blendShapeName))
@@ -1242,12 +1940,12 @@ namespace Reallusion.Import
             report += "\n";
             int curvesFailedToMap = 0;
             foreach (string shape in cache.Keys)
-            {                
+            {
                 if (!mappedBlendShapes.Contains(shape))
                 {
                     curvesFailedToMap++;
                     report += "Could not find BlendShape: " + shape + " in target character.\n";
-                }                
+                }
             }
 
             string reportHeader = "Blendshape Mapping report:\n";
@@ -1256,7 +1954,7 @@ namespace Reallusion.Import
 
             if (log) Util.LogAlways(reportHeader + report);
 
-            bool PURGE = true; 
+            bool PURGE = true;
             // Purge all curves from the animation that dont have a valid path in the target object                    
             if (PURGE)
             {
@@ -1279,7 +1977,7 @@ namespace Reallusion.Import
                             }
                         }
                     }
-                }                
+                }
             }
         }
 
@@ -1322,7 +2020,7 @@ namespace Reallusion.Import
         }
 
         public static AnimationClip WriteAnimationToAssetDatabase(AnimationClip workingClip, string assetPath, bool originalSettings = false)
-        {            
+        {
             if (string.IsNullOrEmpty(assetPath)) return null;
 
             Util.LogDetail("Writing Asset: " + assetPath);
@@ -1354,8 +2052,8 @@ namespace Reallusion.Import
                 // player/re-tartgeter will be untouched so end users dont see a behaviour change after saving
 
                 // **End of addition**
-            }            
-            
+            }
+
             AnimationClip asset = AssetDatabase.LoadAssetAtPath<AnimationClip>(assetPath);
             if (asset == null)
             {
@@ -1444,8 +2142,8 @@ namespace Reallusion.Import
 
         static string[] armFBCurveNames = new string[]
                 {
-                    lArmFB,                    
-                    rArmFB,                    
+                    lArmFB,
+                    rArmFB,
                 };
 
         static string[] legCurveNames = new string[]
@@ -1505,48 +2203,57 @@ namespace Reallusion.Import
             System.IO.File.WriteAllText(path, pathString);
         }
 
-        public static List<AnimationClip> GenerateCharacterTargetedAnimations(string motionAssetPath, 
-            GameObject targetCharacterModel, bool replaceIfExists, string motionPrefix = null)
+        public static List<AnimationClip> GenerateCharacterTargetedAnimations(string motionAssetPath,
+            GameObject targetCharacterModel, CharacterInfo info, bool replaceIfExists, string motionPrefix = null)
         {
-            List<AnimationClip> animationClips = new List<AnimationClip>();
+            List<AnimationClip> clips = new List<AnimationClip>();
+            List<AnimationClip> processedClips = new List<AnimationClip>();
+            AnimationClip[] foundClips = Util.GetAllAnimationClipsFromCharacter(motionAssetPath);
 
-            AnimationClip[] clips = Util.GetAllAnimationClipsFromCharacter(motionAssetPath);            
-
-            if (!targetCharacterModel) targetCharacterModel = Util.FindCharacterPrefabAsset(motionAssetPath);
-            if (!targetCharacterModel) return null;
-
-            string firstPath = null;
-
-            if (clips.Length > 0)
+            foreach (AnimationClip clip in foundClips)
             {
+                string clipPrefix = string.IsNullOrEmpty(motionPrefix) ? RETARGET_SOURCE_PREFIX : motionPrefix;
+                string assetPath = GenerateClipAssetPath(clip, motionAssetPath, clipPrefix, true);
+                if (File.Exists(assetPath) && !replaceIfExists) continue;
+                clips.Add(clip);
+            }
+
+            if (clips.Count > 0 && info.FeatureUseExtractGeneric)
+            {
+                Debug.Log("Extracting generic animation data.");
+                clips = GenericAnimProcessing.ProcessGenericClips(info, clips.ToArray(), motionAssetPath).ToList();
+            }
+
+            if (clips.Count > 0)
+            {
+                if (!targetCharacterModel) targetCharacterModel = Util.FindCharacterPrefabAsset(motionAssetPath);
+                if (!targetCharacterModel) return null;
+
+                string firstPath = null;
+
                 int index = 0;
                 foreach (AnimationClip clip in clips)
                 {
                     string clipPrefix = string.IsNullOrEmpty(motionPrefix) ? RETARGET_SOURCE_PREFIX : motionPrefix;
                     string assetPath = GenerateClipAssetPath(clip, motionAssetPath, clipPrefix, true);
                     if (string.IsNullOrEmpty(firstPath)) firstPath = assetPath;
-                    if (File.Exists(assetPath) && !replaceIfExists)
-                    {
-                        //Debug.Log("FAIL CASE");
-                        continue;
-                    }
                     AnimationClip workingClip = AnimPlayerGUI.CloneClip(clip);
-                    RetargetBlendShapes(clip, workingClip, targetCharacterModel, false);
+                    RetargetBlendShapes(clip, workingClip, targetCharacterModel, info, false);
                     AnimationClip asset = WriteAnimationToAssetDatabase(workingClip, assetPath, false);
-                    animationClips.Add(asset);
+                    processedClips.Add(asset);
                     index++;
                 }
 
                 if (!string.IsNullOrEmpty(firstPath))
-                    AnimPlayerGUI.UpdateAnimatorClip(CharacterAnimator, 
+                    AnimPlayerGUI.UpdateAnimatorClip(CharacterAnimator,
                                                      AssetDatabase.LoadAssetAtPath<AnimationClip>(firstPath));
             }
             else
             {
                 Util.LogInfo("No animation clips found.");
             }
-            
-            return animationClips;
+
+            return processedClips;
         }
 
         /// <summary>
@@ -1723,5 +2430,177 @@ namespace Reallusion.Import
             "RightHand.Little.2 Stretched",
             "RightHand.Little.3 Stretched"
         };
+
+        public static int activeTab = 0;
+        public static float TAB_HEIGHT = 26f;
+
+        public static TabStyles tabStyles;
+        public static TabContents tabCont;
+
+        public class TabStyles
+        {
+            public Vector4 activeBorder;
+            public Vector4 inactiveBorder;
+            public Vector4 ghostBorder;
+            public Vector4 contentBorder;
+
+            public Color outline;
+            public Color ghost;
+
+            public Texture2D activeTex;
+            public Texture2D inactiveTex;
+
+            public GUIStyle iconStyle;
+
+            public TabStyles()
+            {
+                outline = Color.black;
+                ghost = Color.gray * 0.4f;
+
+                activeBorder = new Vector4(1, 1, 1, 0);
+                inactiveBorder = new Vector4(0, 0, 0, 1);
+                ghostBorder = new Vector4(1, 1, 1, 0);
+                contentBorder = new Vector4(1, 0, 1, 1);
+
+                activeTex = TexCol(Color.gray * 0.55f);
+                inactiveTex = TexCol(Color.gray * 0.35f);
+
+                iconStyle = new GUIStyle();
+
+                FixMeh();
+            }
+
+            private Texture2D TexCol(Color color)
+            {
+                const int size = 32;
+                Texture2D texture = new Texture2D(size, size);
+                Color[] pixels = texture.GetPixels();
+                for (int i = 0; i < pixels.Length; i++)
+                {
+                    pixels[i] = color;
+                }
+                texture.SetPixels(pixels);
+                texture.Apply(true);
+                return texture;
+            }
+
+            public void FixMeh()
+            {
+                if (!activeTex)
+                {
+                    activeTex = TexCol(Color.gray * 0.55f);
+                }
+                if (!inactiveTex)
+                {
+                    inactiveTex = TexCol(Color.gray * 0.35f);
+                }
+            }
+        }
+
+        public class TabContents
+        {
+            private Texture2D iconAnimTab;
+            private Texture2D iconPropTab;
+            private Texture2D iconBlendTab;
+            private Texture2D iconLinkConnected;
+            private Texture2D iconLinkDisconnected;
+            private Texture2D iconSettingsTab;
+
+            public int tabCount;
+            public string[] toolTips;
+            public Texture[] icons;
+            public int overrideTab;
+            public Texture[] overrideIcons;
+
+            public TabContents()
+            {
+                string[] folders = new string[] { "Assets", "Packages" };
+
+                //iconAnimTab = Util.FindTexture(folders, "RLIcon-Avatar_G");
+                iconAnimTab = (Texture2D)EditorGUIUtility.IconContent("AnimationClip Icon").image;
+                iconBlendTab = (Texture2D)EditorGUIUtility.IconContent("SkinnedMeshRenderer Icon").image;
+
+                tabCount = 2;
+                toolTips = new string[] { "Animation Adjustment", "Blendshape retargeting" };
+                icons = new Texture[]
+                {
+                    iconAnimTab,
+                    iconBlendTab,
+                };
+                overrideTab = -1;
+                overrideIcons = new Texture[]
+                {
+
+                };
+            }
+        }
+
+        // can override a single tab with icons based on a bool
+        public static int TabbedArea(int TabId, Rect area, int tabCount, float tabHeight, string[] toolTips, Texture[] icons, float iconWidth, float iconHeight, bool fullWindow, int overrideTab = -1, Texture[] overrideIcons = null, bool overrideBool = false, Func<Rect, int, bool> RectHandler = null)
+        {
+            if (tabStyles == null) tabStyles = new TabStyles();
+            if (tabStyles.activeTex == null || tabStyles.inactiveTex == null) tabStyles = new TabStyles();
+            Rect areaRect;
+            if (!fullWindow)
+            {
+                // round width down to an integer multiple of tabCount
+                float width = (float)Math.Round(area.width / tabCount, MidpointRounding.AwayFromZero) * tabCount;
+
+                areaRect = new Rect(area.x, area.y, width, area.height);
+            }
+            else
+            {
+                areaRect = area;
+            }
+
+            Rect[] tabRects = new Rect[tabCount];
+            float tabWidth = (float)Math.Round(areaRect.width / tabCount, mode: MidpointRounding.AwayFromZero);
+            for (int i = 0; i < tabCount; i++)
+            {
+                tabRects[i] = new Rect(tabWidth * i, 0f, tabWidth, tabHeight);
+                if (RectHandler != null) RectHandler(tabRects[i], i); // callback to handle interaction with the tab rect, used for drag and drop
+            }
+
+            int TAB_ID = TabId;
+            GUILayout.BeginArea(areaRect, GUI.skin.box);
+            for (int i = 0; i < tabCount; i++)
+            {
+                Rect rect = tabRects[i];
+                Rect centre = new Rect(rect.x + ((rect.width / 2) - (iconWidth / 2)), rect.y + ((rect.height / 2) - (iconHeight / 2)), iconWidth, iconHeight);
+
+                Texture icon = i == overrideTab ? (overrideBool ? overrideIcons[0] : overrideIcons[1]) : icons[i];
+                // if we arent overriding the icons on a single tab, then the default is icon = icons[i]
+                if (i == TAB_ID)
+                {
+                    GUI.DrawTexture(rect, tabStyles.activeTex);
+                    GUI.DrawTexture(rect, tabStyles.activeTex, ScaleMode.StretchToFill, false, 1f, tabStyles.outline, tabStyles.activeBorder, Vector4.zero);
+                    GUI.Box(centre, new GUIContent(icon, toolTips[i]), tabStyles.iconStyle);
+                }
+                else
+                {
+                    GUI.DrawTexture(rect, tabStyles.inactiveTex);
+                    GUI.DrawTexture(rect, tabStyles.inactiveTex, ScaleMode.StretchToFill, false, 1f, tabStyles.outline, tabStyles.inactiveBorder, Vector4.zero);
+                    GUI.DrawTexture(rect, tabStyles.inactiveTex, ScaleMode.StretchToFill, false, 1f, tabStyles.ghost, tabStyles.ghostBorder, Vector4.zero);
+                    GUI.Box(centre, new GUIContent(icon, toolTips[i]), tabStyles.iconStyle);
+                }
+
+                Event mouseEvent = Event.current;
+                if (rect.Contains(mouseEvent.mousePosition))
+                {
+                    if (mouseEvent.type == EventType.MouseDown && mouseEvent.clickCount == 1)
+                    {
+                        TAB_ID = i;
+                        SceneView.RepaintAll();
+                    }
+                }
+            }
+            Rect contentRect = new Rect(0, tabHeight, areaRect.width, areaRect.height - tabHeight);
+            GUI.DrawTexture(contentRect, tabStyles.activeTex);
+            if (!fullWindow)
+                GUI.DrawTexture(contentRect, tabStyles.activeTex, ScaleMode.StretchToFill, false, 1f, tabStyles.outline, tabStyles.contentBorder, Vector4.zero);
+
+            GUILayout.EndArea();
+            return TAB_ID;
+        }
     }
 }

@@ -16,8 +16,10 @@
  * along with CC_Unity_Tools.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Reallusion.Import
 {
@@ -31,6 +33,8 @@ namespace Reallusion.Import
         public bool postInstallShowPopupNotWindow;
 
         public bool criticalUpdateRequired;
+        public bool shaderUpdateInProgress;
+        public bool runtimeUpdateInProgress;
 
         public bool pendingShaderUninstall;
         public bool pendingRuntimeUninstall;
@@ -38,7 +42,7 @@ namespace Reallusion.Import
         public bool pendingShaderInstall;
         public bool pendingRuntimeInstall;
 
-        public bool performPostInstallationCheck;
+        public bool performPostInstallationShaderCheck;
         public bool performPostInstallationRuntimeCheck;
 
         public string updateMessage;
@@ -48,13 +52,45 @@ namespace Reallusion.Import
         public string jsonTagName;
         public string jsonHtmlUrl;
         public string jsonPublishedAt;
-        public string [] jsonBodyLines;
+        public string[] jsonBodyLines;
         //public List<RLToolUpdateUtil.JsonFragment> fullJsonFragment;
         public string fullJsonFragment;
         public string lastPath;
         public string toolVersion;
         public string shaderToolVersion;
+        public Version VersionShader
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(shaderToolVersion))
+                    shaderToolVersion = UpdateManager.installedShaderVersion.ToString();
+                if (Version.TryParse(shaderToolVersion, out var version))
+                    return version;
+                return new Version(0, 0, 0);
+            }
+            set
+            {
+                shaderToolVersion = value.ToString();
+            }
+        }
+        public int InstalledShaderRevision;
         public string runtimeToolVersion;
+        public Version VersionRuntime
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(runtimeToolVersion))
+                    runtimeToolVersion = UpdateManager.installedRuntimeVersion.ToString();
+                if (Version.TryParse(runtimeToolVersion, out var version))
+                    return version;
+                return new Version(0, 0, 0);
+            }
+            set
+            {
+                runtimeToolVersion = value.ToString();
+            }
+        }
+        public int installedRuntimeRevision;
 
         public bool showProps = true;
 

@@ -17,14 +17,10 @@
  */
 
 using System;
-using System.IO;
-using System.Linq;
-using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.Rendering;
-using Object = UnityEngine.Object;
 
 namespace Reallusion.Import
 {
@@ -35,7 +31,7 @@ namespace Reallusion.Import
 
         //public const string defaultPath = "Assets/Reallusion/CCiC Unity Tools";
         public const string defaultSettingsName = "RLSettingsObject.asset";
-        
+
         public static RLSettingsObject FindRLSettingsObject()
         {
             string search = "RLSettingsObject";
@@ -103,14 +99,14 @@ namespace Reallusion.Import
                     // store first valid one
                     // check all for a path match
                     // use the matching path one otherwise use the first
-                    
+
                     foreach (string aguid in applicableGuids)
                     {
                         valid = TryGetValidObject(aguid, out RLSettingsObject validObj);
                         if (valid)
                         {
                             if (result == null)
-                            { 
+                            {
                                 result = validObj;
                                 objGuid = aguid;
                             }
@@ -138,14 +134,20 @@ namespace Reallusion.Import
                     }
                     else
                     {
-                        MoveGuidToTrash(objGuid);
-                        return CreateSettingsObject();
+                        // version upgrade
+                        result.toolVersion = Pipeline.VERSION;
+                        return result;
+                        //MoveGuidToTrash(objGuid);                        
+                        //return CreateSettingsObject();
                     }
                 }
                 else
                 {
-                    MoveGuidToTrash(objGuid);
-                    return CreateSettingsObject();
+                    // unknown version
+                    //MoveGuidToTrash(objGuid);
+                    //return CreateSettingsObject();
+                    result.toolVersion = Pipeline.VERSION;
+                    return result;
                 }
             }
         }
@@ -179,7 +181,7 @@ namespace Reallusion.Import
             obj.checkForUpdates = true;
             obj.updateWindowShownOnce = false;
             obj.postInstallShowUpdateWindow = false;
-            obj.performPostInstallationCheck = false;
+            obj.performPostInstallationShaderCheck = false;
             obj.updateAvailable = false;
             obj.lastUpdateCheck = 0;
             obj.jsonTagName = string.Empty;

@@ -19,14 +19,12 @@
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.Diagnostics;
-
+using Object = UnityEngine.Object;
 #if HDRP_10_5_0_OR_NEWER
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.HighDefinition;
 using UnityEditor.Rendering.HighDefinition;
 #endif
-using Object = UnityEngine.Object;
 
 namespace Reallusion.Import
 {
@@ -34,16 +32,16 @@ namespace Reallusion.Import
 
     public enum MaterialType
     {
-        None, Skin, Head, Eye, Cornea, EyeOcclusion, Tearline, Hair, Scalp,
-        Eyelash, Teeth, Tongue, DefaultOpaque, DefaultAlpha, BlendAlpha, SSS, 
-        TearlinePlus, EyeOcclusionPlus
+        None, Skin, Head, Eye, Cornea, EyeOcclusion, Tearline, HairHQ, HairBasic, Scalp,
+        Eyelash, Teeth, Tongue, DefaultOpaque, DefaultAlpha, BlendAlpha, SSS,
+        TearlinePlus, EyeOcclusionPlus, Disabled,
     }
 
     public enum MaterialQuality { None, Default, High, Baked }
 
     public static class Pipeline
     {
-        public const string VERSION = "2.1.0"; // temp change to force upgrade
+        public const string VERSION = "2.2.5";
 
 #if HDRP_10_5_0_OR_NEWER
         // version
@@ -52,6 +50,8 @@ namespace Reallusion.Import
         //
         public const string SHADER_DEFAULT = "HDRP/Lit";
         public const string SHADER_DEFAULT_HAIR = "HDRP/Hair";
+        public const string SHADER_DEFAULT_MERGED = "RL5_Merged_HDRP";
+        public const string SHADER_DISABLED = "RL5_Disabled_HDRP";
         //
         public const string SHADER_HQ_SKIN = "RL5_SkinShader_Variants_HDRP";
         public const string SHADER_HQ_HEAD = "RL5_SkinShader_Variants_HDRP";
@@ -62,6 +62,7 @@ namespace Reallusion.Import
         public const string SHADER_HQ_TEARLINE = "RL5_TearlineShader_HDRP";
         public const string SHADER_HQ_TEARLINE_PLUS = "RL5_TearlinePlusShader_HDRP";
         public const string SHADER_HQ_HAIR = "RL5_HairShader_Variants_HDRP";
+        public const string SHADER_HQ_HAIR_BASIC = "RL5_HairShader_Basic_HDRP";
         public const string SHADER_HQ_SCALPBASE = "HDRP/Lit";
         public const string SHADER_HQ_EYELASH = "HDRP/Lit";
         public const string SHADER_HQ_TEETH = "RL5_TeethShader_HDRP";
@@ -83,14 +84,16 @@ namespace Reallusion.Import
         // HQ Materials
         //
         public const string MATERIAL_HQ_SKIN = "RL5_Template_HQ_Skin_HDRP";
-        public const string MATERIAL_HQ_HEAD = "RL5_Template_HQ_Head_HDRP";        
+        public const string MATERIAL_HQ_HEAD = "RL5_Template_HQ_Head_HDRP";
         public const string MATERIAL_HQ_CORNEA = "RL5_Template_HQ_CorneaBasic_HDRP";
-        public const string MATERIAL_HQ_EYE = "RL5_Template_HQ_EyeBasic_Dummy_HDRP";        
+        public const string MATERIAL_HQ_EYE = "RL5_Template_HQ_EyeBasic_Dummy_HDRP";
         public const string MATERIAL_HQ_EYE_OCCLUSION = "RL5_Template_HQ_EyeOcclusion_HDRP";
         public const string MATERIAL_HQ_TEARLINE = "RL5_Template_HQ_Tearline_HDRP";
         public const string MATERIAL_HQ_EYE_OCCLUSION_PLUS = "RL5_Template_HQ_EyeOcclusionPlus_HDRP";
         public const string MATERIAL_HQ_TEARLINE_PLUS = "RL5_Template_HQ_TearlinePlus_HDRP";
         public const string MATERIAL_HQ_HAIR = "RL5_Template_HQ_Hair_HDRP";
+        //public const string MATERIAL_HQ_HAIR_BASIC = "RL5_Template_HQ_HairBasic_HDRP";
+        public const string MATERIAL_HQ_HAIR_BASIC = "RL5_Template_HQ_Hair_HDRP";
         public const string MATERIAL_HQ_SCALPBASE = "RL5_Template_Default_ScalpBase_HDRP";
         public const string MATERIAL_HQ_EYELASH = "RL5_Template_Default_Eyelash_HDRP";
         public const string MATERIAL_HQ_TEETH = "RL5_Template_HQ_Teeth_HDRP";
@@ -121,7 +124,7 @@ namespace Reallusion.Import
         public const string MATERIAL_DEFAULT_TEARLINE = "RL5_Template_Default_Tearline_HDRP";
         public const string MATERIAL_DEFAULT_HAIR = "RL5_Template_Default_Hair_HDRP";
         public const string MATERIAL_DEFAULT_SCALPBASE = "RL5_Template_Default_ScalpBase_HDRP";
-        public const string MATERIAL_DEFAULT_EYELASH = "RL5_Template_Default_Eyelash_HDRP";        
+        public const string MATERIAL_DEFAULT_EYELASH = "RL5_Template_Default_Eyelash_HDRP";
         public const string MATERIAL_DEFAULT_TEETH = "RL5_Template_Default_Opaque_HDRP";
         public const string MATERIAL_DEFAULT_TONGUE = "RL5_Template_Default_Opaque_HDRP";
         public const string MATERIAL_DEFAULT_ALPHACLIP = "RL5_Template_Default_AlphaClip_HDRP";
@@ -130,6 +133,9 @@ namespace Reallusion.Import
         public const string MATERIAL_DEFAULT_SSS = "RL5_Template_Default_SSS_HDRP";
         // for gamebase single material or actor core...
         public const string MATERIAL_DEFAULT_SINGLE_MATERIAL = "RL5_Template_Default_SingleMaterial_HDRP";
+        public const string MATERIAL_DEFAULT_MERGED = "RL5_Template_Default_Merged_HDRP";
+        // disabled
+        public const string MATERIAL_DEFAULT_DISABLED = "RL5_Template_Default_Disabled_HDRP";
 
         // Baked Materials
         // Note: Non custom materials must bake to HDRP default shaders
@@ -155,9 +161,9 @@ namespace Reallusion.Import
         // variants (that differ from the defaults above)
         public const string MATERIAL_BAKED_SKIN_CUSTOM = "RL5_Template_Baked_SkinCustom_HDRP";
         public const string MATERIAL_BAKED_HEAD_CUSTOM = "RL5_Template_Baked_HeadCustom_HDRP";
-        public const string MATERIAL_BAKED_CORNEA_CUSTOM = "RL5_Template_Baked_CorneaBasicCustom_HDRP";                
+        public const string MATERIAL_BAKED_CORNEA_CUSTOM = "RL5_Template_Baked_CorneaBasicCustom_HDRP";
         public const string MATERIAL_BAKED_CORNEA_PARALLAX_CUSTOM = "RL5_Template_Baked_CorneaParallaxCustom_HDRP";
-        public const string MATERIAL_BAKED_CORNEA_REFRACTIVE_CUSTOM = "RL5_Template_Baked_CorneaRefractiveCustom_HDRP";        
+        public const string MATERIAL_BAKED_CORNEA_REFRACTIVE_CUSTOM = "RL5_Template_Baked_CorneaRefractiveCustom_HDRP";
         public const string MATERIAL_BAKED_EYE_REFRACTIVE_CUSTOM = "RL5_Template_Baked_EyeRefractiveCustom_HDRP";
         public const string MATERIAL_BAKED_EYE_OCCLUSION_CUSTOM = "RL5_Template_Baked_EyeOcclusionCustom_HDRP";
         public const string MATERIAL_BAKED_EYE_OCCLUSION_PLUS_CUSTOM = "RL5_Template_Baked_EyeOcclusionPlusCustom_HDRP";
@@ -167,7 +173,7 @@ namespace Reallusion.Import
         public const string MATERIAL_BAKED_HAIR_1ST_PASS = "RL5_Template_Baked_Hair_1st_Pass_HDRP";
         public const string MATERIAL_BAKED_HAIR_2ND_PASS = "RL5_Template_Baked_Hair_2nd_Pass_HDRP";
         public const string MATERIAL_BAKED_HAIR_CUSTOM_1ST_PASS = "RL5_Template_Baked_HairCustom_1st_Pass_HDRP";
-        public const string MATERIAL_BAKED_HAIR_CUSTOM_2ND_PASS = "RL5_Template_Baked_HairCustom_2nd_Pass_HDRP";        
+        public const string MATERIAL_BAKED_HAIR_CUSTOM_2ND_PASS = "RL5_Template_Baked_HairCustom_2nd_Pass_HDRP";
         // wrinkle map
         public const string MATERIAL_BAKED_HEAD_WRINKLE_CUSTOM = "RL5_Template_Baked_HeadWrinkleCustom_HDRP";
 #elif URP_10_5_0_OR_NEWER
@@ -177,6 +183,8 @@ namespace Reallusion.Import
         //
         public const string SHADER_DEFAULT = "Universal Render Pipeline/Lit";
         public const string SHADER_DEFAULT_HAIR = "Universal Render Pipeline/Hair"; // n/a
+        public const string SHADER_DEFAULT_MERGED = "RL5_Merged_URP";
+        public const string SHADER_DISABLED = "RL5_Disabled_URP";
         //
         public const string SHADER_HQ_SKIN = "RL5_SkinShader_Variants_URP";
         public const string SHADER_HQ_HEAD = "RL5_SkinShader_Variants_URP";
@@ -187,6 +195,7 @@ namespace Reallusion.Import
         public const string SHADER_HQ_EYE_OCCLUSION_PLUS = "RL5_EyeOcclusionPlusShader_URP";
         public const string SHADER_HQ_TEARLINE_PLUS = "RL5_TearlinePlusShader_URP";
         public const string SHADER_HQ_HAIR = "RL5_HairShader_Variants_URP";
+        public const string SHADER_HQ_HAIR_BASIC = "RL5_HairShader_Basic_URP";
         public const string SHADER_HQ_SCALPBASE = "Universal Render Pipeline/Lit";
         public const string SHADER_HQ_EYELASH = "Universal Render Pipeline/Lit";
         public const string SHADER_HQ_TEETH = "RL5_TeethShader_URP";
@@ -216,6 +225,7 @@ namespace Reallusion.Import
         public const string MATERIAL_HQ_EYE_OCCLUSION_PLUS = "RL5_Template_HQ_EyeOcclusionPlus_URP";
         public const string MATERIAL_HQ_TEARLINE_PLUS = "RL5_Template_HQ_TearlinePlus_URP";
         public const string MATERIAL_HQ_HAIR = "RL5_Template_HQ_Hair_URP";
+        public const string MATERIAL_HQ_HAIR_BASIC = "RL5_Template_HQ_Hair_URP";
         public const string MATERIAL_HQ_SCALPBASE = "RL5_Template_Default_ScalpBase_URP";
         public const string MATERIAL_HQ_EYELASH = "RL5_Template_Default_Eyelash_URP";
         public const string MATERIAL_HQ_TEETH = "RL5_Template_HQ_Teeth_URP";
@@ -257,6 +267,9 @@ namespace Reallusion.Import
         public const string MATERIAL_DEFAULT_SSS = "RL5_Template_Default_SSS_URP";
         // for gamebase single material or actor core...
         public const string MATERIAL_DEFAULT_SINGLE_MATERIAL = "RL5_Template_Default_SingleMaterial_URP";
+        public const string MATERIAL_DEFAULT_MERGED = "RL5_Template_Default_SingleMaterial_URP";
+        // disabled
+        public const string MATERIAL_DEFAULT_DISABLED = "RL5_Template_Default_Disabled_URP";
 
         // Baked Materials
         // Note: Non custom materials must bake to HDRP default shaders
@@ -304,6 +317,8 @@ namespace Reallusion.Import
         //
         public const string SHADER_DEFAULT = "Standard";
         public const string SHADER_DEFAULT_HAIR = "Standard";
+        public const string SHADER_DEFAULT_MERGED = "RL5_Merged_3D";
+        public const string SHADER_DISABLED = "RL5_Disabled_3D";
         //
         public const string SHADER_HQ_SKIN = "RL5_SkinShader_Variants_3D";
         public const string SHADER_HQ_HEAD = "RL5_SkinShader_Variants_3D";
@@ -314,6 +329,7 @@ namespace Reallusion.Import
         public const string SHADER_HQ_EYE_OCCLUSION_PLUS = "RL5_EyeOcclusionPlusShader_3D";
         public const string SHADER_HQ_TEARLINE_PLUS = "RL5_TearlinePlusShader_3D";
         public const string SHADER_HQ_HAIR = "RL5_HairShader_Clipped_3D";
+        public const string SHADER_HQ_HAIR_BASIC = "RL5_HairShader_Basic_3D";
         public const string SHADER_HQ_SCALPBASE = "Standard";
         public const string SHADER_HQ_EYELASH = "Standard";
         public const string SHADER_HQ_TEETH = "RL5_TeethShader_3D";
@@ -343,6 +359,7 @@ namespace Reallusion.Import
         public const string MATERIAL_HQ_EYE_OCCLUSION_PLUS = "RL5_Template_HQ_EyeOcclusionPlus_3D";
         public const string MATERIAL_HQ_TEARLINE_PLUS = "RL5_Template_HQ_TearlinePlus_3D";
         public const string MATERIAL_HQ_HAIR = "RL5_Template_HQ_Hair_3D";
+        public const string MATERIAL_HQ_HAIR_BASIC = "RL5_Template_HQ_Hair_3D";
         public const string MATERIAL_HQ_SCALPBASE = "RL5_Template_Default_ScalpBase_3D";
         public const string MATERIAL_HQ_EYELASH = "RL5_Template_Default_Eyelash_3D";
         public const string MATERIAL_HQ_TEETH = "RL5_Template_HQ_Teeth_3D";
@@ -384,7 +401,10 @@ namespace Reallusion.Import
         public const string MATERIAL_DEFAULT_SSS = "RL5_Template_Default_SSS_3D";
         // for gamebase single material or actor core...
         public const string MATERIAL_DEFAULT_SINGLE_MATERIAL = "RL5_Template_Default_SingleMaterial_3D";
-        
+        public const string MATERIAL_DEFAULT_MERGED = "RL5_Template_Default_SingleMaterial_3D";
+        // disabled
+        public const string MATERIAL_DEFAULT_DISABLED = "RL5_Template_Default_Disabled_3D";
+
         // Baked Materials
         // Note: Non custom materials must bake to HDRP default shaders
         //       Only "Custom" materials have custom shaders, or have special settings like refraction.
@@ -436,7 +456,8 @@ namespace Reallusion.Import
             { MaterialType.EyeOcclusionPlus, SHADER_HQ_EYE_OCCLUSION_PLUS },
             { MaterialType.Tearline, SHADER_HQ_TEARLINE },
             { MaterialType.TearlinePlus, SHADER_HQ_TEARLINE_PLUS },
-            { MaterialType.Hair, SHADER_HQ_HAIR },
+            { MaterialType.HairHQ, SHADER_HQ_HAIR },
+            { MaterialType.HairBasic, SHADER_HQ_HAIR_BASIC },
             { MaterialType.Scalp, SHADER_HQ_SCALPBASE },
             { MaterialType.Eyelash, SHADER_HQ_EYELASH },
             { MaterialType.Teeth, SHADER_HQ_TEETH },
@@ -445,6 +466,7 @@ namespace Reallusion.Import
             { MaterialType.BlendAlpha, SHADER_HQ_ALPHABLEND },
             { MaterialType.DefaultOpaque, SHADER_HQ_OPAQUE },
             { MaterialType.SSS, SHADER_HQ_SSS },
+            { MaterialType.Disabled, SHADER_DISABLED },
         };
 
         private static Dictionary<MaterialType, string> DICT_MATERIALS_DEFAULT = new Dictionary<MaterialType, string>
@@ -457,7 +479,7 @@ namespace Reallusion.Import
             { MaterialType.Tearline, MATERIAL_DEFAULT_TEARLINE },
             { MaterialType.EyeOcclusionPlus, MATERIAL_DEFAULT_EYE_OCCLUSION },
             { MaterialType.TearlinePlus, MATERIAL_DEFAULT_TEARLINE },
-            { MaterialType.Hair, MATERIAL_DEFAULT_HAIR },
+            { MaterialType.HairHQ, MATERIAL_DEFAULT_HAIR },
             { MaterialType.Scalp, MATERIAL_DEFAULT_SCALPBASE },
             { MaterialType.Eyelash, MATERIAL_DEFAULT_EYELASH },
             { MaterialType.Teeth, MATERIAL_DEFAULT_TEETH },
@@ -466,6 +488,7 @@ namespace Reallusion.Import
             { MaterialType.BlendAlpha, MATERIAL_DEFAULT_ALPHABLEND },
             { MaterialType.DefaultOpaque, MATERIAL_DEFAULT_OPAQUE },
             { MaterialType.SSS, MATERIAL_DEFAULT_SSS },
+            { MaterialType.Disabled, MATERIAL_DEFAULT_DISABLED },
         };
 
         private static Dictionary<MaterialType, string> DICT_MATERIALS_HQ = new Dictionary<MaterialType, string>
@@ -478,7 +501,8 @@ namespace Reallusion.Import
             { MaterialType.Tearline, MATERIAL_HQ_TEARLINE },
             { MaterialType.EyeOcclusionPlus, MATERIAL_HQ_EYE_OCCLUSION_PLUS },
             { MaterialType.TearlinePlus, MATERIAL_HQ_TEARLINE_PLUS },
-            { MaterialType.Hair, MATERIAL_HQ_HAIR },
+            { MaterialType.HairHQ, MATERIAL_HQ_HAIR },
+            { MaterialType.HairBasic, MATERIAL_HQ_HAIR_BASIC },
             { MaterialType.Scalp, MATERIAL_HQ_SCALPBASE },
             { MaterialType.Eyelash, MATERIAL_HQ_EYELASH },
             { MaterialType.Teeth, MATERIAL_HQ_TEETH },
@@ -499,7 +523,7 @@ namespace Reallusion.Import
             { MaterialType.Tearline, MATERIAL_BAKED_TEARLINE },
             { MaterialType.EyeOcclusionPlus, MATERIAL_BAKED_EYE_OCCLUSION_PLUS },
             { MaterialType.TearlinePlus, MATERIAL_BAKED_TEARLINE_PLUS },
-            { MaterialType.Hair, MATERIAL_BAKED_HAIR },
+            { MaterialType.HairHQ, MATERIAL_BAKED_HAIR },
             { MaterialType.Scalp, MATERIAL_BAKED_SCALPBASE },
             { MaterialType.Eyelash, MATERIAL_BAKED_EYELASH },
             { MaterialType.Teeth, MATERIAL_BAKED_TEETH },
@@ -549,8 +573,8 @@ namespace Reallusion.Import
 
         public static void ResetMaterial(Material mat)
         {
-            string[] propertyPaths = new string[] { "m_SavedProperties.m_TexEnvs", 
-                                                    "m_SavedProperties.m_Floats", 
+            string[] propertyPaths = new string[] { "m_SavedProperties.m_TexEnvs",
+                                                    "m_SavedProperties.m_Floats",
                                                     "m_SavedProperties.m_Colors" };
 
             SerializedObject so = new SerializedObject(mat);
@@ -597,7 +621,7 @@ namespace Reallusion.Import
             SerializedObject hdrp = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath(assetPath)[0]);
 
             if (hdrp == null) return modified;
-                        
+
             string[] profiles = new string[] { "RL_Skin_Profile", "RL_Teeth_Profile", "RL_Eye_Profile", "RL_SSS_Profile" };
 
 #if HDRP_14_0_0_OR_NEWER
@@ -606,7 +630,7 @@ namespace Reallusion.Import
 
             SerializedProperty propDefaultVolumeProfile = hdrp.FindProperty("m_DefaultVolumeProfile");
             if (propDefaultVolumeProfile == null)
-                defaultVolumeAsset = (VolumeProfile)Util.FindAsset("DefaultSettingsVolumeProfile");            
+                defaultVolumeAsset = (VolumeProfile)Util.FindAsset("DefaultSettingsVolumeProfile");
             else
                 defaultVolumeAsset = (VolumeProfile)propDefaultVolumeProfile.objectReferenceValue;
 
@@ -644,7 +668,7 @@ namespace Reallusion.Import
                         }
                     }
                 }
-            }         
+            }
 
             if (modified)
             {
@@ -704,8 +728,8 @@ namespace Reallusion.Import
         }
 
         public static Dictionary<MaterialType, string> GetShaderDictionary()
-        {            
-            return DICT_SHADERS;            
+        {
+            return DICT_SHADERS;
         }
 
         public static Dictionary<MaterialType, string> GetMaterialDictionary(MaterialQuality quality)
@@ -721,17 +745,32 @@ namespace Reallusion.Import
             return Util.FindMaterial(materialName);
         }
 
-        public static string GetQualityMaterialName(string sourceName, MaterialType materialType, MaterialQuality quality, CharacterInfo info)
-        {            
+        public static bool IsMergedMaterial(string sourceName, CharacterInfo info)
+        {
             if (info.Generation == BaseGeneration.ActorCore)
-                return MATERIAL_DEFAULT_SINGLE_MATERIAL;            
+                return true;
 
             if (info.Generation == BaseGeneration.ActorBuild)
             {
                 Material singleMaterial = RL.GetActorBuildSingleMaterial(info.Fbx);
                 if (singleMaterial && singleMaterial.name == sourceName)
-                    return MATERIAL_DEFAULT_SINGLE_MATERIAL;
+                    return true;
             }
+
+            if (sourceName.iContains("_meshes_merge"))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        public static string GetQualityMaterialName(string sourceName, MaterialType materialType, MaterialQuality quality, CharacterInfo info)
+        {
+            if (materialType == MaterialType.Disabled)
+                return MATERIAL_DEFAULT_DISABLED;
+
+            if (IsMergedMaterial(sourceName, info)) return MATERIAL_DEFAULT_MERGED;
 
             if (quality == MaterialQuality.High) // option overrides for high quality materials
             {
@@ -744,7 +783,7 @@ namespace Reallusion.Import
                 }
 
                 if (info.ParallaxEyes)
-                {                    
+                {
                     if (materialType == MaterialType.Cornea)
                         return MATERIAL_HQ_CORNEA_PARALLAX;
                     if (materialType == MaterialType.Eye)
@@ -753,7 +792,7 @@ namespace Reallusion.Import
 
                 if (info.CoverageHair)
                 {
-                    if (materialType == MaterialType.Hair)
+                    if (materialType == MaterialType.HairHQ)
                         return MATERIAL_HQ_HAIR_COVERAGE;
                 }
 
@@ -784,15 +823,15 @@ namespace Reallusion.Import
                         if (materialType == MaterialType.Cornea)
                             return MATERIAL_BAKED_CORNEA_CUSTOM;
                     }
-                    
-                    if (materialType == MaterialType.Hair)
+
+                    if (materialType == MaterialType.HairHQ)
                     {
                         if (info.BuiltCoverageHair)
                             return MATERIAL_BAKED_HAIR_COVERAGE_CUSTOM;
                         else
                             return MATERIAL_BAKED_HAIR_CUSTOM;
-                    }                        
-                                       
+                    }
+
                     if (materialType == MaterialType.EyeOcclusion)
                         return MATERIAL_BAKED_EYE_OCCLUSION_CUSTOM;
 
@@ -802,15 +841,15 @@ namespace Reallusion.Import
 
                     if (info.BuiltFeatureWrinkleMaps)
                     {
-                        if (materialType == MaterialType.Head)                        
+                        if (materialType == MaterialType.Head)
                             return MATERIAL_BAKED_HEAD_WRINKLE_CUSTOM;
                     }
-                                        
+
                     if (materialType == MaterialType.Head)
                         return MATERIAL_BAKED_HEAD_CUSTOM;
                     else if (materialType == MaterialType.Skin)
-                        return MATERIAL_BAKED_SKIN_CUSTOM;                    
-                }                
+                        return MATERIAL_BAKED_SKIN_CUSTOM;
+                }
             }
 
             // override game base SSS skin with default skin for correct diffusion profile
@@ -825,7 +864,7 @@ namespace Reallusion.Import
 
             // return the material named in the dictionary...
             if (materialDictionary != null && materialDictionary.ContainsKey(materialType))
-            {                                
+            {
                 return materialDictionary[materialType];
             }
 
@@ -852,7 +891,7 @@ namespace Reallusion.Import
         public static string GetTemplateMaterialName(string sourceName, MaterialType materialType, MaterialQuality quality, CharacterInfo info)
         {
             string templateName = GetQualityMaterialName(sourceName, materialType, quality, info);
-            
+
             if (string.IsNullOrEmpty(templateName))
                 templateName = GetDefaultMaterialName(quality);
 
@@ -860,9 +899,9 @@ namespace Reallusion.Import
                 Util.LogError("Unable to find Template Material for: " + materialType + "/" + quality);
 
             return templateName;
-        }        
+        }
 
-        public static Material GetTemplateMaterial(string sourceName, MaterialType materialType, MaterialQuality quality, 
+        public static Material GetTemplateMaterial(string sourceName, MaterialType materialType, MaterialQuality quality,
                                                    CharacterInfo info, bool useDigitalHuman = false)
         {
             string templateName = GetTemplateMaterialName(sourceName, materialType, quality, info);
@@ -870,13 +909,13 @@ namespace Reallusion.Import
             return GetUpgradedTemplateMaterial(sourceName, templateName, quality, useDigitalHuman);
         }
 
-        public static Material GetUpgradedTemplateMaterial(string sourceName, string templateName, 
-                                                           MaterialQuality quality, 
+        public static Material GetUpgradedTemplateMaterial(string sourceName, string templateName,
+                                                           MaterialQuality quality,
                                                            bool useDigitalHuman)
         {
             string customTemplateName;
             Material customTemplate = null;
-            Material foundTemplate = null;            
+            Material foundTemplate = null;
 
             if (useDigitalHuman)
             {
@@ -887,7 +926,7 @@ namespace Reallusion.Import
                     templateName = customTemplateName;
                     customTemplate = foundTemplate;
                 }
-            }            
+            }
 
             if (customTemplate) return customTemplate;
 
@@ -897,12 +936,18 @@ namespace Reallusion.Import
             return GetDefaultMaterial(quality);
         }
 
-        public static bool UpgradeShader(Material mat, bool useTessellation, bool useAmplify)
+        public static bool UpgradeShader(Material mat, bool useTessellation, bool useAmplify, bool doubleSided = false)
         {
             Shader shader = mat.shader;
             string shaderName = shader.name;
             bool tessellationUpgrade = false;
             bool amplifyUpgrade = false;
+
+            if (shaderName == "Standard" && doubleSided)
+            {
+                Shader dblSidedShader = Shader.Find("Reallusion/RL_Standard_DoubleSided");
+                mat.shader = dblSidedShader;
+            }
 
             if (useAmplify)
             {
@@ -923,8 +968,8 @@ namespace Reallusion.Import
                     {
                         customShader = Shader.Find(customAmplifyShaderName);
                     }
-                }                
-                
+                }
+
                 if (customShader)
                 {
                     Util.LogInfo("Upgrading Shader: " + shaderName + " to Amplify Shader: " + customAmplifyShaderName);
@@ -970,6 +1015,10 @@ namespace Reallusion.Import
                     mat.EnableKeyword("_TESSELLATION_PHONG");
                     // HDRP custom
                     // URP/AMP custom
+                    mat.SetFloatIf("_TessMax", 0f);
+                    mat.SetFloatIf("_TessMin", 1f);
+                    mat.SetFloatIf("_TessPhongStrength", 0.75f);
+                    mat.SetFloatIf("_TessValue", 3f);
                 }
             }
 
@@ -982,7 +1031,7 @@ namespace Reallusion.Import
 
             foreach (MaterialType type in materialType)
                 if (shaderName.iEndsWith(shaderDictionary[type]))
-                    return true;            
+                    return true;
 
             return false;
         }

@@ -16,16 +16,14 @@
  * along with CC_Unity_Tools.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-using System.IO;
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
-using UnityEditor;
-using Object = UnityEngine.Object;
+using System.IO;
 using System.Linq;
-using System.Data.Sql;
 using System.Text.RegularExpressions;
+using UnityEditor;
+using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Reallusion.Import
 {
@@ -73,7 +71,7 @@ namespace Reallusion.Import
         }
 
         public static bool IsCC3CharacterAtPath(string assetPath)
-        {            
+        {
             if (assetPath.iEndsWith(".fbx"))
             {
                 string assetFolder = Path.GetDirectoryName(assetPath);
@@ -97,7 +95,7 @@ namespace Reallusion.Import
             }
 
             return false;
-        }        
+        }
 
         public static bool IsSavedPrefabInSelection()
         {
@@ -116,16 +114,16 @@ namespace Reallusion.Import
             else if (Selection.gameObjects.Length == 1)
             {
                 GameObject instanceRoot = GetScenePrefabInstanceRoot(Selection.gameObjects[0]);
-                GameObject prefabSource = PrefabUtility.GetCorrespondingObjectFromSource(instanceRoot);                
+                GameObject prefabSource = PrefabUtility.GetCorrespondingObjectFromSource(instanceRoot);
                 if (prefabSource)
                 {
                     if (AssetDatabase.GetAssetPath(prefabSource).iEndsWith(".prefab")) return true;
-                }                
+                }
             }
 
             return false;
         }
-        
+
         public static Color LinearTosRGBOld(Color c)
         {
             if (c.r < 0f) c.r = 0f;
@@ -150,7 +148,7 @@ namespace Reallusion.Import
         }
 
         public static Color sRGBToLinear(Color c)
-        {            
+        {
             Vector3 linearRGBLo;
             linearRGBLo.x = c.r / 12.92f;
             linearRGBLo.y = c.g / 12.92f;
@@ -175,7 +173,7 @@ namespace Reallusion.Import
             c.a = a;
             return c;
         }
-        
+
         public static bool HasJSONAsset(string folder, string name)
         {
             string jsonPath = Path.Combine(folder, name + ".json");
@@ -183,14 +181,14 @@ namespace Reallusion.Import
         }
 
         public static QuickJSON GetJsonData(string jsonPath)
-        {            
+        {
             if (File.Exists(jsonPath))
             {
                 TextAsset jsonAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(jsonPath);
                 QuickJSON jsonData = new QuickJSON(jsonAsset.text);
                 return jsonData;
             }
-            
+
             return null;
         }
 
@@ -212,7 +210,7 @@ namespace Reallusion.Import
                             int q2 = line.IndexOf('"', q1 + 1);
                             if (q1 >= 0 && q2 >= 0)
                             {
-                                string generation = line.Substring(q1 + 1, q2 - q1 - 1);                                
+                                string generation = line.Substring(q1 + 1, q2 - q1 - 1);
                                 return generation;
                             }
                         }
@@ -233,7 +231,7 @@ namespace Reallusion.Import
 
         public static List<string> GetValidCharacterGUIDS()
         {
-            string[] guids = AssetDatabase.FindAssets("t:Model", new string[] { "Assets" });            
+            string[] guids = AssetDatabase.FindAssets("t:Model", new string[] { "Assets" });
             List<CharacterSort> results = new List<CharacterSort>();
 
             foreach (string g in guids)
@@ -245,7 +243,7 @@ namespace Reallusion.Import
                     results.Add(new CharacterSort() { guid = g, name = name });
                 }
             }
-            
+
             List<string> sortedGuids = new List<string>(results.Count);
             foreach (CharacterSort cs in results.OrderBy(o => o.name)) sortedGuids.Add(cs.guid);
 
@@ -313,7 +311,7 @@ namespace Reallusion.Import
                 fullSplit = fullPath.Split('\\');
                 baseSplit = basePath.Split('\\');
             }
-            else if (Application.platform == RuntimePlatform.OSXEditor || 
+            else if (Application.platform == RuntimePlatform.OSXEditor ||
                      Application.platform == RuntimePlatform.LinuxEditor)
             {
                 fullSplit = fullPath.Split('/');
@@ -350,7 +348,7 @@ namespace Reallusion.Import
 
         public static string GetAssetFolder(params Object[] assets)
         {
-            foreach (Object o in assets)            
+            foreach (Object o in assets)
             {
                 if (o)
                 {
@@ -363,9 +361,9 @@ namespace Reallusion.Import
         }
 
         public static string GetCharacterFolder(string fbxPath, out string characterName)
-        {            
+        {
             characterName = Path.GetFileNameWithoutExtension(fbxPath);
-            return Path.GetDirectoryName(fbxPath);            
+            return Path.GetDirectoryName(fbxPath);
         }
 
         public static string GetCharacterFolder(GameObject prefabAsset, out string characterName)
@@ -375,7 +373,7 @@ namespace Reallusion.Import
                 characterName = "";
                 return "";
             }
-            GameObject fbxAsset = FindRootPrefabAssetFromSceneObject(prefabAsset);            
+            GameObject fbxAsset = FindRootPrefabAssetFromSceneObject(prefabAsset);
             string fbxPath = AssetDatabase.GetAssetPath(fbxAsset);
             characterName = Path.GetFileNameWithoutExtension(fbxPath);
             return Path.GetDirectoryName(fbxPath);
@@ -392,8 +390,8 @@ namespace Reallusion.Import
                 if (shader != null)
                 {
                     if (shader.name.iEquals(name))
-                    {                        
-#if UNITY_2020_3_OR_NEWER                        
+                    {
+#if UNITY_2020_3_OR_NEWER
                         if (Application.platform == RuntimePlatform.OSXEditor)
                             shader.EnableKeyword("_MAC_OS");
                         else
@@ -427,7 +425,7 @@ namespace Reallusion.Import
             }
 
             return null;
-        }        
+        }
 
         public static Texture2D FindTexture(string[] folders, string search)
         {
@@ -524,7 +522,7 @@ namespace Reallusion.Import
         {
             // remove any ./ .\ prefix from the start of the json texture path
             if (jsonTexPath.iStartsWith("./") || jsonTexPath.iStartsWith(".\\"))
-                jsonTexPath = jsonTexPath.Substring(2);            
+                jsonTexPath = jsonTexPath.Substring(2);
 
             // convert slashes/backslashes to OS dependant separator
             if (Path.DirectorySeparatorChar != '\\') jsonTexPath = jsonTexPath.Replace('\\', Path.DirectorySeparatorChar);
@@ -562,7 +560,7 @@ namespace Reallusion.Import
         }
 
         public static string GetSourceMaterialName(string fbxPath, Material sharedMaterial)
-        {            
+        {
             ModelImporter importer = (ModelImporter)AssetImporter.GetAtPath(fbxPath);
             Dictionary<AssetImporter.SourceAssetIdentifier, Object> importerRemaps = importer.GetExternalObjectMap();
 
@@ -581,7 +579,9 @@ namespace Reallusion.Import
                 sourceName = sourceName.Substring(0, sourceName.IndexOf("_2nd_Pass", System.StringComparison.InvariantCultureIgnoreCase));
 
             // remove Unity duplication Suffix
-            //if (sourceName[sourceName.Length - 2] == ' ' && char.IsDigit(sourceName[sourceName.Length - 1]))
+            //if (sourceName.Length > 2 &&
+            //    sourceName[sourceName.Length - 2] == ' ' &&
+            //    char.IsDigit(sourceName[sourceName.Length - 1]))
             //{
             //    sourceName = sourceName.Substring(0, sourceName.Length - 2);
             //}
@@ -618,7 +618,7 @@ namespace Reallusion.Import
             const float specularMid = 0.5f;
             float P = Mathf.Log(smoothnessStdMax) / Mathf.Log(specularMid);
             return smoothness * Mathf.Clamp(Mathf.Pow(specular, P), 0f, smoothnessStdMax);
-        }        
+        }
 
         public static string GetShaderName(Material mat)
         {
@@ -629,7 +629,7 @@ namespace Reallusion.Import
             }
 
             return "None";
-        }                
+        }
 
         public static string[] GetLinkedMaterialNames(string name)
         {
@@ -645,8 +645,8 @@ namespace Reallusion.Import
         public static int GetLinkedMaterialIndex(string sourceName, string shaderName)
         {
             // identify linked materials by shader name:
-            if ((shaderName.iContains(Pipeline.SHADER_HQ_HEAD) || 
-                 shaderName.iContains(Pipeline.SHADER_HQ_SKIN)) && 
+            if ((shaderName.iContains(Pipeline.SHADER_HQ_HEAD) ||
+                 shaderName.iContains(Pipeline.SHADER_HQ_SKIN)) &&
                 !sourceName.iContains("_Nails")) return CharacterTreeView.LINKED_INDEX_SKIN;
 
             if (shaderName.iContains(Pipeline.SHADER_HQ_EYE) ||
@@ -666,10 +666,11 @@ namespace Reallusion.Import
             // then try by source material name:
             if (sourceName.iContains("_Skin_Head") || sourceName.iContains("_Skin_Body") ||
                 sourceName.iContains("_Skin_Arm") || sourceName.iContains("_Skin_Leg"))
-                return CharacterTreeView.LINKED_INDEX_SKIN;            
+                return CharacterTreeView.LINKED_INDEX_SKIN;
             if (sourceName.iContains("_Eye_Occlusion_")) return CharacterTreeView.LINKED_INDEX_EYE_OCCLUSION;
             if (sourceName.iContains("_Tearline_")) return CharacterTreeView.LINKED_INDEX_TEARLINE;
-            if (sourceName.iContains("_Eye_") || sourceName.iContains("_Cornea_")) return CharacterTreeView.LINKED_INDEX_CORNEA;            
+            if (sourceName.iContains("_Eye_")) return CharacterTreeView.LINKED_INDEX_EYE;
+            if (sourceName.iContains("_Cornea_")) return CharacterTreeView.LINKED_INDEX_CORNEA;
             if (sourceName.iContains("_Upper_Teeth") || sourceName.iContains("_Lower_Teeth")) return CharacterTreeView.LINKED_INDEX_TEETH;
 
             return -1;
@@ -753,14 +754,14 @@ namespace Reallusion.Import
             {
                 GameObject.DestroyImmediate(child);
             }
-        }        
-        
+        }
+
         public static AnimationClip GetFirstAnimationClipFromCharacter(GameObject sourceFbx)
         {
             AnimationClip found = null;
 
             if (sourceFbx)
-            {                
+            {
                 Object[] data = AssetDatabase.LoadAllAssetRepresentationsAtPath(AssetDatabase.GetAssetPath(sourceFbx));
                 foreach (Object subObject in data)
                 {
@@ -831,9 +832,9 @@ namespace Reallusion.Import
 
             return clips.ToArray();
         }
-        
+
         public static GameObject FindCharacterPrefabAsset(GameObject fbxAsset, bool baked = false)
-        { 
+        {
             string path = AssetDatabase.GetAssetPath(fbxAsset);
             if (!string.IsNullOrEmpty(path))
             {
@@ -850,10 +851,10 @@ namespace Reallusion.Import
         }
 
         public static GameObject FindCharacterPrefabAsset(string fbxPath, bool baked = false)
-        {            
+        {
             if (!string.IsNullOrEmpty(fbxPath))
             {
-                if (fbxPath.iEndsWith(".prefab")) 
+                if (fbxPath.iEndsWith(".prefab"))
                     return AssetDatabase.LoadAssetAtPath<GameObject>(fbxPath);
                 string folder = Path.GetDirectoryName(fbxPath);
                 string name = Path.GetFileNameWithoutExtension(fbxPath);
@@ -903,7 +904,7 @@ namespace Reallusion.Import
             }
 
             return null;
-        }        
+        }
 
         public static GameObject FindRootPrefabAsset(GameObject prefabAsset)
         {
@@ -923,11 +924,11 @@ namespace Reallusion.Import
         }
 
         public static GameObject FindRootPrefabAssetFromSceneObject(Object sceneObject)
-        {            
+        {
             GameObject instanceRoot = GetScenePrefabInstanceRoot(sceneObject);
 
             return FindRootPrefabAsset(instanceRoot);
-        }        
+        }
 
         public static void ResetPrefabTransforms(GameObject prefabRoot, GameObject prefabObj = null)
         {
@@ -953,8 +954,8 @@ namespace Reallusion.Import
                         if (prefabObj.transform.localScale != source.transform.localScale) resetSca = true;
                         if (resetPos) prefabObj.transform.localPosition = source.transform.localPosition;
                         if (resetRot) prefabObj.transform.localRotation = source.transform.localRotation;
-                        if (resetSca) prefabObj.transform.localScale = source.transform.localScale;                        
-                    }                    
+                        if (resetSca) prefabObj.transform.localScale = source.transform.localScale;
+                    }
 
                     for (int i = 0; i < prefabObj.transform.childCount; i++)
                     {
@@ -965,7 +966,7 @@ namespace Reallusion.Import
             }
         }
 
-        public static GameObject TryResetScenePrefab(GameObject scenePrefab)  
+        public static GameObject TryResetScenePrefab(GameObject scenePrefab)
         {
             if (PrefabNeedsReset(scenePrefab))
             {
@@ -991,7 +992,7 @@ namespace Reallusion.Import
         }
 
         public static bool PrefabNeedsReset(GameObject prefabObj)
-        {            
+        {
             if (prefabObj)
             {
                 GameObject source = PrefabUtility.GetCorrespondingObjectFromOriginalSource(prefabObj);
@@ -1032,20 +1033,64 @@ namespace Reallusion.Import
                 }
             }
         }
-        
-        public static Transform FindChildRecursive(Transform root, string search)
+
+        public static Transform FindChildRecursive(Transform root, string search,
+                                                   bool dontFollowDuplicates = false,
+                                                   List<string> names = null)
         {
-            if (root.name.iEquals(search)) return root;
+            if (dontFollowDuplicates)
+            {
+                if (names == null)
+                {
+                    names = new List<string>();
+                }
+
+                if (names.Contains(root.name))
+                {
+                    return null;
+                }
+
+                names.Add(root.name);
+            }
+
+            if (root.name.iEquals(search))
+            {
+                return root;
+            }
 
             for (int i = 0; i < root.childCount; i++)
             {
-                Transform found = FindChildRecursive(root.GetChild(i), search);
+                Transform child = root.GetChild(i);
+                Transform found = FindChildRecursive(child, search, dontFollowDuplicates, names);
                 if (found) return found;
             }
 
             return null;
-        }     
-        
+        }
+
+        public static Transform FindRealBone(Transform root, string search)
+        {
+            return FindChildRecursive(root, search, true);
+        }
+
+        public static Transform FindAnyBone(Transform root, string search)
+        {
+            return FindChildRecursive(root, search, false);
+        }
+
+        public static bool IsRealBone(Transform root, Transform bone, List<string> names = null)
+        {
+            if (names == null) names = new List<string>();
+
+            // if we can trace parents back to the root transform without 
+            // encountering any duplicates this should be a real original bone.
+            if (names.Contains(bone.name)) return false;
+            if (bone == root) return true;
+
+            names.Add(bone.name);
+            return IsRealBone(root, bone.parent, names);
+        }
+
         public static bool AssetPathExists(string assetPath)
         {
             return File.Exists(assetPath);
@@ -1072,7 +1117,7 @@ namespace Reallusion.Import
             }
 
             return false;
-        }        
+        }
 
         public static bool NameContainsKeywords(string name, params string[] keyword)
         {
@@ -1147,12 +1192,17 @@ namespace Reallusion.Import
         const char delimiterChar = ',';
 
         public static bool TrySerializeAssetToEditorPrefs(Object asset, string editorPrefsKey)
-        {            
-            int assetInstanceID = asset.GetInstanceID();
-            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(assetInstanceID, out string guid, out long localid))
+        {
+            // the instanceId and now EntityId are only used for logging
+#if UNITY_6000_4_OR_NEWER
+            EntityId assetID = asset.GetEntityId();
+#else
+            int assetID = asset.GetInstanceID();
+#endif
+            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(asset, out string guid, out long localid))
             {
-                string outString = assetInstanceID.ToString() + delimiterChar + guid.ToString() + delimiterChar + localid.ToString();
-                LogDetail("Instance ID: " + assetInstanceID.ToString());
+                string outString = assetID.ToString() + delimiterChar + guid.ToString() + delimiterChar + localid.ToString();
+                LogDetail("Instance ID: " + assetID.ToString());
                 LogDetail("GUID: " + guid.ToString());
                 LogDetail("localID: " + localid.ToString());
                 LogDetail("outString: " + outString);
@@ -1162,7 +1212,7 @@ namespace Reallusion.Import
             }
             else
             {
-                string path = AssetDatabase.GetAssetPath(assetInstanceID);
+                string path = AssetDatabase.GetAssetPath(asset);
                 LogWarn("Cannot get GUID and ID for: " + asset.name + " at path: " + path);
                 EditorPrefs.SetString(editorPrefsKey, prefsFailString);
                 return false;
@@ -1170,7 +1220,7 @@ namespace Reallusion.Import
         }
 
         public static bool TryDeSerializeAssetFromEditorPrefs<T>(out Object asset, string editorPrefsKey)
-        {            
+        {
             bool storedAsset = false;
             string assetString = "";
             if (EditorPrefs.HasKey(editorPrefsKey))
@@ -1195,15 +1245,20 @@ namespace Reallusion.Import
                 string[] split = assetString.Split(new char[] { delimiterChar });
 
                 LogDetail("assetString: " + assetString);
-                LogDetail("split count: " + split.Length);                
+                LogDetail("split count: " + split.Length);
 
                 if (split.Length == 3)
                 {
-                    int assetInstanceID = int.Parse(split[0]);
+                    // the instanceId and now EntityId are only used for logging
+#if UNITY_6000_4_OR_NEWER
+                    string assetID = split[0];
+#else
+                    int assetID = int.Parse(split[0]);
+#endif
                     string guid = split[1];
                     long localid = long.Parse(split[2]);
 
-                    LogDetail("Found Instance ID: " + assetInstanceID.ToString());
+                    LogDetail("Found Instance ID: " + assetID.ToString());
                     LogDetail("Found GUID: " + guid.ToString());
                     LogDetail("Found localID: " + localid.ToString());
 
@@ -1228,7 +1283,7 @@ namespace Reallusion.Import
                     {
                         foreach (Object potential in potentials)
                         {
-                            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(potential.GetInstanceID(), out string tryGuid, out long tryLocalid))
+                            if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(potential, out string tryGuid, out long tryLocalid))
                             {
                                 if (guid == tryGuid && tryLocalid == localid)
                                 {
@@ -1378,7 +1433,7 @@ namespace Reallusion.Import
                     string boneName = smr.bones[i].name;
                     Transform toBone = System.Array.Find(toTransforms, t => t.name.Equals(boneName));
                     if (toBone) newSMR.bones[i] = toBone;
-                }                
+                }
             }
         }
 
@@ -1468,15 +1523,49 @@ namespace Reallusion.Import
             return new Rect(0f, 0f, 0f, 0f);  // something was null - return a new empty Rect
         }
 
-        public static string RandomString(int length)
+        public static string RandomString(int length, bool upper = false)
         {
             System.Random random = new System.Random();
 
-            const string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-            return new string(Enumerable.Repeat(chars, length)
-                .Select(s => s[random.Next(s.Length)]).ToArray());
+            if (upper)
+            {
+                const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+                return new string(Enumerable.Repeat(chars, length)
+                    .Select(s => s[random.Next(s.Length)]).ToArray());
+            }
+            else
+            {
+                const string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+                return new string(Enumerable.Repeat(chars, length)
+                    .Select(s => s[random.Next(s.Length)]).ToArray());
+            }
         }
 
+        public static void ApplyIfPrefabInstance(GameObject obj)
+        {
+            if (PrefabUtility.GetPrefabInstanceStatus(obj) != PrefabInstanceStatus.NotAPrefab)
+            {
+                try
+                {
+                    PrefabUtility.ApplyPrefabInstance(obj, InteractionMode.AutomatedAction);
+                }
+                catch
+                {
+                    Util.LogWarn("Unable to apply prefab instance.");
+                }
+            }
+        }
 
-    }    
+        public static object FindObjectsByType<T>(bool includeInactive)
+        {
+#if UNITY_6000_4_OR_NEWER
+            object[] objects = GameObject.FindObjectsByType(typeof(T), includeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude);
+#elif UNITY_2023_OR_NEWER
+            object[] objects = GameObject.FindObjectsByType(typeof(T), FindObjectsSortMode.None);
+#else
+            object[] objects = GameObject.FindObjectsOfType(typeof(T), includeInactive);
+#endif
+            return objects;
+        }
+    }
 }

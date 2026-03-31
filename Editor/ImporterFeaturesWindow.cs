@@ -16,13 +16,9 @@
  * along with CC_Unity_Tools.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
-using UnityEditor.Sprites;
 using UnityEngine;
-using UnityEngine.UIElements;
 
 namespace Reallusion.Import
 {
@@ -50,7 +46,7 @@ namespace Reallusion.Import
         }
 
         void OnDisable()
-        {            
+        {
             AssemblyReloadEvents.beforeAssemblyReload -= Close;
             importerFeaturesWindow = null;
         }
@@ -106,7 +102,7 @@ namespace Reallusion.Import
             {
                 contextCharacter = importerWindow.Character;
             }
-            
+
             Vector2 windowSize = new Vector2(DROPDOWN_WIDTH, INITIAL_DROPDOWN_HEIGHT);
             ShowAsDropDown(buttonRect, windowSize);
         }
@@ -159,10 +155,32 @@ namespace Reallusion.Import
             }
 
             if (DrawFlagSelectionLine(line++, CharacterInfo.ShaderFeatureFlags.WrinkleMaps, "Wrinkle Maps", SECTION_INDENT))
+            {
+                if (!contextCharacter.ShaderFlags.HasFlag(CharacterInfo.ShaderFeatureFlags.WrinkleMaps))
+                {
+                    SetFeatureFlag(CharacterInfo.ShaderFeatureFlags.WrinkleDisplacement, false);
+                }
                 flagChanged = true;
+            }
 
             if (DrawFlagSelectionLine(line++, CharacterInfo.ShaderFeatureFlags.Displacement, "", SECTION_INDENT))
+            {
+                if (!contextCharacter.ShaderFlags.HasFlag(CharacterInfo.ShaderFeatureFlags.Displacement))
+                {
+                    SetFeatureFlag(CharacterInfo.ShaderFeatureFlags.WrinkleDisplacement, false);
+                }
                 flagChanged = true;
+            }
+
+            if (DrawFlagSelectionLine(line++, CharacterInfo.ShaderFeatureFlags.WrinkleDisplacement, "Wrinkle Displacement", SECTION_INDENT))
+            {
+                if (contextCharacter.ShaderFlags.HasFlag(CharacterInfo.ShaderFeatureFlags.WrinkleDisplacement))
+                {
+                    SetFeatureFlag(CharacterInfo.ShaderFeatureFlags.WrinkleMaps, true);
+                    SetFeatureFlag(CharacterInfo.ShaderFeatureFlags.Displacement, true);
+                }
+                flagChanged = true;
+            }
 
             if (Pipeline.isHDRP)
             {
@@ -180,12 +198,12 @@ namespace Reallusion.Import
                 }
             }
 
-                /*
-                if (DrawFlagSelectionLine(line++, CharacterInfo.ShaderFeatureFlags.TexturePacking, "Texture Packing", SECTION_INDENT))
-                    flagChanged = true;
-                */
+            /*
+            if (DrawFlagSelectionLine(line++, CharacterInfo.ShaderFeatureFlags.TexturePacking, "Texture Packing", SECTION_INDENT))
+                flagChanged = true;
+            */
 
-                DrawLabelLine(line++, "Character Physics:");
+            DrawLabelLine(line++, "Character Physics:");
 
             // Cloth Physics
             if (DrawFlagSelectionLine(line++, CharacterInfo.ShaderFeatureFlags.ClothPhysics, "Enable Cloth Physics", SECTION_INDENT))
@@ -252,9 +270,28 @@ namespace Reallusion.Import
                     {
                         if (DrawFlagSelectionLine(line++, CharacterInfo.ShaderFeatureFlags.SpringBoneHair, "Dynamic Bone Springbones", SUB_SECTION_INDENT, CharacterInfo.springGroup))
                             flagChanged = true;
-                    }                    
+                    }
                 }
             }
+
+            DrawLabelLine(line++, "Character Expression Features:");
+
+            if (DrawFlagSelectionLine(line++, CharacterInfo.ShaderFeatureFlags.BoneDriver, "Expression Driven Bones", SECTION_INDENT))
+                flagChanged = true;
+
+            if (DrawFlagSelectionLine(line++, CharacterInfo.ShaderFeatureFlags.ExpressionTranspose, "Expression Transpose", SECTION_INDENT))
+                flagChanged = true;
+
+            if (DrawFlagSelectionLine(line++, CharacterInfo.ShaderFeatureFlags.ConstraintData, "Use Constraints", SECTION_INDENT))
+                flagChanged = true;
+
+
+            DrawLabelLine(line++, "Experimental:");
+            DrawLabelLine(line++, " - Extra Generic Animation Data:");
+
+            if (DrawFlagSelectionLine(line++, CharacterInfo.ShaderFeatureFlags.ExtractGeneric, "   Merge extra generic data", SECTION_INDENT))
+                flagChanged = true;
+
 
             DrawLabelLine(line++, "");
 
@@ -278,7 +315,7 @@ namespace Reallusion.Import
             GUI.DrawTexture(container, Texture2D.whiteTexture, ScaleMode.StretchToFill, false, 1f, color, border, Vector4.zero);
         }
 
-        private bool DrawFlagSelectionLine(int line, CharacterInfo.ShaderFeatureFlags flag, string overrideLabel = "", float indent = 0f, CharacterInfo.ShaderFeatureFlags [] radioGroup = null)
+        private bool DrawFlagSelectionLine(int line, CharacterInfo.ShaderFeatureFlags flag, string overrideLabel = "", float indent = 0f, CharacterInfo.ShaderFeatureFlags[] radioGroup = null)
         {
             GUILayout.BeginHorizontal(GetLineStyle(line));
             GUILayout.Space(indent);
@@ -310,7 +347,7 @@ namespace Reallusion.Import
         {
             if (windowStyles == null) windowStyles = new Styles();
 
-            return itemIndex % 2 > 0 ? windowStyles.listEvenBg : windowStyles.listOddBg;
+            return itemIndex % 2 == 0 ? windowStyles.listEvenBg : windowStyles.listOddBg;
         }
 
         private void SetFeatureFlag(CharacterInfo.ShaderFeatureFlags flag, bool value)
@@ -390,6 +427,6 @@ namespace Reallusion.Import
             {
                 SetFeatureFlag(groupFlag, groupFlag.Equals(flag));
             }
-        }        
+        }
     }
 }

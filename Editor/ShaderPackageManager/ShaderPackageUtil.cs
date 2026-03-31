@@ -17,15 +17,14 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Collections;
-using System.Collections.Generic;
 using UnityEditor;
+using UnityEditor.PackageManager;
+using UnityEditor.PackageManager.Requests;
 using UnityEngine;
 using UnityEngine.Rendering;
-using UnityEditor.PackageManager.Requests;
-using UnityEditor.PackageManager;
 using Object = UnityEngine.Object;
 
 namespace Reallusion.Import
@@ -71,7 +70,7 @@ namespace Reallusion.Import
 
                 //Debug.LogWarning("runForce " + runForce);
 
-                bool shaderActionRequired = force || optional; 
+                bool shaderActionRequired = force || optional;
                 bool runtimeActionRequired = runForce || runOptional;
                 if (ShaderPackageUpdater.Instance != null)
                 {
@@ -94,18 +93,32 @@ namespace Reallusion.Import
         {
             UpdateManager.determinedShaderAction = new ActionRules();
             ImporterWindow.SetGeneralSettings(RLSettings.FindRLSettingsObject(), false);
-            if (ImporterWindow.generalSettings != null)
+            if (ImporterWindow.GeneralSettings != null)
             {
-                if (ImporterWindow.generalSettings.performPostInstallationCheck) ShaderPackageUtil.PostImportShaderPackageItemCompare();
-                ImporterWindow.generalSettings.performPostInstallationCheck = false;
+                if (ImporterWindow.GeneralSettings.performPostInstallationShaderCheck)
+                {
+                    ShaderPackageUtil.PostImportShaderPackageItemCompare();
+                    ImporterWindow.GeneralSettings.performPostInstallationShaderCheck = false;
+                }
 
-                if (ImporterWindow.generalSettings.performPostInstallationRuntimeCheck) ShaderPackageUtil.PostImportRuntimePackageItemCompare();
-                ImporterWindow.generalSettings.performPostInstallationRuntimeCheck = false;
+                if (ImporterWindow.GeneralSettings.performPostInstallationRuntimeCheck)
+                {
+                    ShaderPackageUtil.PostImportRuntimePackageItemCompare();
+                    ImporterWindow.GeneralSettings.performPostInstallationRuntimeCheck = false;
+                }
+
+                if (!ImporterWindow.GeneralSettings.performPostInstallationShaderCheck &&
+                    ImporterWindow.GeneralSettings.shaderUpdateInProgress)
+                    ImporterWindow.GeneralSettings.shaderUpdateInProgress = false;
+
+                if (!ImporterWindow.GeneralSettings.performPostInstallationRuntimeCheck &&
+                    ImporterWindow.GeneralSettings.runtimeUpdateInProgress)
+                    ImporterWindow.GeneralSettings.runtimeUpdateInProgress = false;
             }
             OnPipelineDetermined -= PipelineDetermined;
             OnPipelineDetermined += PipelineDetermined;
             GetInstalledPipelineVersion();
-            
+
             if (callback) FrameTimer.OnFrameTimerComplete -= ShaderPackageUtil.ImporterWindowInitCallback;
 
             if (InitCompleted != null)
@@ -116,7 +129,7 @@ namespace Reallusion.Import
         public static event EventHandler OnPipelineDetermined;
         public static event EventHandler PackageCheckDone;
         public static event EventHandler InitCompleted;
-        
+
         public static void PipelineDetermined(object sender, EventArgs e)
         {
             if (ImporterWindow.GeneralSettings != null)
@@ -132,21 +145,21 @@ namespace Reallusion.Import
 
             OnPipelineDetermined -= PipelineDetermined;
         }
-                
+
         public static void ValidateInstalledShader()
         {
             string[] manifestGUIDS = AssetDatabase.FindAssets("_RL_shadermanifest", new string[] { "Assets" });
             string guid = string.Empty;
 
-            UpdateManager.currentPackageManifest = GetCurrentShaderForPipeline();
-            UpdateManager.currentLegacyPackageManifest = GetCurrentLegacyShaderForPipeline();
+            UpdateManager.latestShaderPackageManifest = GetCurrentShaderForPipeline();
+            UpdateManager.latestLegacyPackageManifest = GetCurrentLegacyShaderForPipeline();
             UpdateManager.missingShaderPackageItems = new List<ShaderPackageItem>();
 
             // consider simplest cases 'Nothing installed' 'One Shader Installed' 'Multiple shaders installed'
             // nothing and multiple are immediately returned - a single shader install is further examined
             if (manifestGUIDS.Length == 0)
             {
-                UpdateManager.installedPackageStatus = InstalledPackageStatus.Absent;
+                UpdateManager.installedShaderStatus = InstalledPackageStatus.Absent;
                 UpdateManager.shaderPackageValid = PackageVailidity.Absent;
                 return; // action rule: Status: Absent  Vailidity: Absent
             }
@@ -156,11 +169,11 @@ namespace Reallusion.Import
             }
             else if (manifestGUIDS.Length > 1)
             {
-                UpdateManager.installedPackageStatus = InstalledPackageStatus.Multiple;
+                UpdateManager.installedShaderStatus = InstalledPackageStatus.Multiple;
                 UpdateManager.shaderPackageValid = PackageVailidity.Invalid;
                 return; // action rule: Status: Multiple  Vailidity: Invalid
             }
-            
+
             // examination of single installed shader
             string assetPath = AssetDatabase.GUIDToAssetPath(guid);
             ShaderPackageManifest shaderPackageManifest = ReadJson(assetPath);
@@ -172,14 +185,14 @@ namespace Reallusion.Import
                 // check shader is for the currently active pipeline
                 if (shaderPackageManifest.Pipeline != UpdateManager.activePipelineVersion)
                 {
-                    UpdateManager.installedPackageStatus = InstalledPackageStatus.Mismatch;
+                    UpdateManager.installedShaderStatus = InstalledPackageStatus.Mismatch;
                     UpdateManager.shaderPackageValid = PackageVailidity.Invalid;
                     return; // action rule: Status: Mismatch  Vailidity: Invalid
                 }
             }
             else // check shader is real and is for the currently active pipeline
             {
-                UpdateManager.installedPackageStatus = InstalledPackageStatus.Absent;
+                UpdateManager.installedShaderStatus = InstalledPackageStatus.Absent;
                 UpdateManager.shaderPackageValid = PackageVailidity.Absent;
                 return; // action rule: Status: Absent  Vailidity: Absent
             }
@@ -189,6 +202,7 @@ namespace Reallusion.Import
             //Debug.LogWarning("ValidateInstalledShader");
             UpdateManager.installedShaderPipelineVersion = shaderPackageManifest.Pipeline;
             UpdateManager.installedShaderVersion = new Version(shaderPackageManifest.Version);
+            UpdateManager.installedShaderRevision = shaderPackageManifest.Revision;
 
             foreach (ShaderPackageItem item in shaderPackageManifest.Items)
             {
@@ -215,36 +229,81 @@ namespace Reallusion.Import
                 }
             }
 
-            int invalidItems = shaderPackageManifest.Items.FindAll(x => x.Validated == false).Count();
-            if (invalidItems == 0 && UpdateManager.missingShaderPackageItems.Count == 0)
+            if (UpdateManager.installedShaderPipelineVersion == UpdateManager.activePipelineVersion)
             {
-                // no missing or invalid items -- determine whether an upgrade is available
-                UpdateManager.shaderPackageValid = PackageVailidity.Valid;
+                int invalidItems = shaderPackageManifest.Items.FindAll(x => x.Validated == false).Count();
 
-                if (UpdateManager.installedShaderPipelineVersion == UpdateManager.activePipelineVersion)
+                if (invalidItems == 0 && UpdateManager.missingShaderPackageItems.Count == 0)
+                {
+                    // no missing or invalid items -- determine whether an upgrade is available
+                    UpdateManager.shaderPackageValid = PackageVailidity.Valid;
+
+                    // compare current release version with installed version
+                    Version maxVersion = UpdateManager.latestShaderPackageManifest.Version.ToVersion();
+                    int revision = UpdateManager.latestShaderPackageManifest.Revision;
+
+                    if (UpdateManager.installedShaderVersion == maxVersion)
+                    {
+                        if (revision > UpdateManager.installedShaderRevision)
+                        {
+                            UpdateManager.installedShaderStatus = InstalledPackageStatus.Upgradeable;
+                        }
+                        else
+                        {
+                            UpdateManager.installedShaderStatus = InstalledPackageStatus.Current;
+                        }
+                    }
+                    else if (UpdateManager.installedShaderVersion < maxVersion)
+                    {
+                        UpdateManager.installedShaderStatus = InstalledPackageStatus.Upgradeable; // action rule: Status: Upgradeable  Vailidity: Valid
+                    }
+                    else if (UpdateManager.installedShaderVersion > maxVersion)
+                    {
+                        UpdateManager.installedShaderStatus = InstalledPackageStatus.VersionTooHigh; // action rule: Status: VersionTooHigh  Vailidity: Valid
+                    }
+                }
+                else
+                {
+                    // shader has missing files
+                    UpdateManager.installedShaderStatus = InstalledPackageStatus.MissingFiles;
+                    UpdateManager.shaderPackageValid = PackageVailidity.Invalid;
+                    return;  // action rule: Status: MissingFiles  Vailidity: Invalid
+                }
+            }
+            else // mismatch between installed and active shader pipeline version
+            {
+                UpdateManager.installedShaderStatus = InstalledPackageStatus.Mismatch;
+                return; // action rule: Status: Mismatch  Vailidity: Valid
+            }
+
+
+
+            /*
+            if (UpdateManager.installedShaderPipelineVersion == UpdateManager.activePipelineVersion)
                 {
                     // compare current release version with installed version
-                    Version maxVersion = UpdateManager.currentPackageManifest.Version.ToVersion();
+                    Version maxVersion = UpdateManager.latestShaderPackageManifest.Version.ToVersion();
                     if (UpdateManager.installedShaderVersion == maxVersion)
-                        UpdateManager.installedPackageStatus = InstalledPackageStatus.Current; // action rule: Status: Current  Vailidity: Valid
+                        UpdateManager.installedShaderStatus = InstalledPackageStatus.Current; // action rule: Status: Current  Vailidity: Valid
                     else if (UpdateManager.installedShaderVersion < maxVersion)
-                        UpdateManager.installedPackageStatus = InstalledPackageStatus.Upgradeable; // action rule: Status: Upgradeable  Vailidity: Valid
+                        UpdateManager.installedShaderStatus = InstalledPackageStatus.Upgradeable; // action rule: Status: Upgradeable  Vailidity: Valid
                     else if (UpdateManager.installedShaderVersion > maxVersion)
-                        UpdateManager.installedPackageStatus = InstalledPackageStatus.VersionTooHigh; // action rule: Status: VersionTooHigh  Vailidity: Valid
+                        UpdateManager.installedShaderStatus = InstalledPackageStatus.VersionTooHigh; // action rule: Status: VersionTooHigh  Vailidity: Valid
                 }
                 else // mismatch between installed and active shader pipeline version
                 {
-                    UpdateManager.installedPackageStatus = InstalledPackageStatus.Mismatch;
+                    UpdateManager.installedShaderStatus = InstalledPackageStatus.Mismatch;
                     return; // action rule: Status: Mismatch  Vailidity: Valid
                 }
-            }
+            }            
             else
             {
                 // shader has missing files
-                UpdateManager.installedPackageStatus = InstalledPackageStatus.MissingFiles;
+                UpdateManager.installedShaderStatus = InstalledPackageStatus.MissingFiles;
                 UpdateManager.shaderPackageValid = PackageVailidity.Invalid;
                 return;  // action rule: Status: MissingFiles  Vailidity: Invalid
             }
+            */
 
             // required rules summary (the only state combinations that can be returned NB: versioning is only examined when the package is valid):
             // action rule: Status: Absent  Vailidity: Absent
@@ -262,7 +321,7 @@ namespace Reallusion.Import
             string[] manifestGUIDS = AssetDatabase.FindAssets("_RL_runtimemanifest", new string[] { "Assets" });
             string guid = string.Empty;
 
-            UpdateManager.currentRuntimePackageManifest = GetMostRecentRuntimePackage();
+            UpdateManager.latestRuntimePackageManifest = GetMostRecentRuntimePackage();
             UpdateManager.missingRuntimePackageItems = new List<ShaderPackageItem>();
 
             if (manifestGUIDS.Length == 0)
@@ -288,6 +347,7 @@ namespace Reallusion.Import
             {
                 runtimePackageManifest.ManifestPath = assetPath;
                 UpdateManager.installedRuntimeVersion = new Version(runtimePackageManifest.Version);
+                UpdateManager.installedRuntimeRevision = runtimePackageManifest.Revision;
 
                 foreach (ShaderPackageItem item in runtimePackageManifest.Items)
                 {
@@ -321,15 +381,30 @@ namespace Reallusion.Import
                     UpdateManager.runtimePackageValid = PackageVailidity.Valid;
 
                     // compare current release version with installed version
-                    Version maxVersion = UpdateManager.currentRuntimePackageManifest.Version.ToVersion();
+                    Version maxVersion = UpdateManager.latestRuntimePackageManifest.Version.ToVersion();
+                    int revision = UpdateManager.latestRuntimePackageManifest.Revision;
 
-                    if(UpdateManager.installedRuntimeVersion == maxVersion)
-                        UpdateManager.installedRuntimeStatus = InstalledPackageStatus.Current; // action rule: Status: Current  Vailidity: Valid
+                    if (UpdateManager.installedRuntimeVersion == maxVersion)
+                    {
+                        if (revision > UpdateManager.installedRuntimeRevision)
+                        {
+                            UpdateManager.installedRuntimeStatus = InstalledPackageStatus.Upgradeable; // action rule: Status: Upgradeable  Vailidity: Valid
+                        }
+                        else
+                        {
+                            UpdateManager.installedRuntimeStatus = InstalledPackageStatus.Current; // action rule: Status: Current  Vailidity: Valid
+                        }
+                    }
                     else if (UpdateManager.installedRuntimeVersion < maxVersion)
+                    {
                         UpdateManager.installedRuntimeStatus = InstalledPackageStatus.Upgradeable; // action rule: Status: Upgradeable  Vailidity: Valid
+                    }
                     else if (UpdateManager.installedRuntimeVersion > maxVersion)
+                    {
                         UpdateManager.installedRuntimeStatus = InstalledPackageStatus.VersionTooHigh; // action rule: Status: VersionTooHigh  Vailidity: Valid
+                    }
                 }
+
                 else
                 {
                     // shader has missing files
@@ -347,7 +422,7 @@ namespace Reallusion.Import
 
             foreach (var obj in UpdateManager.availableRuntimePackages)
             {
-                if(Version.TryParse(obj.Version, out Version currentVersion))
+                if (Version.TryParse(obj.Version, out Version currentVersion))
                 {
                     if (currentVersion > maxVersion)
                     {
@@ -358,7 +433,7 @@ namespace Reallusion.Import
                 else
                 {
                     Debug.Log("Error parsing version string");
-                }                
+                }
             }
             return maxVersionObject;
         }
@@ -381,7 +456,7 @@ namespace Reallusion.Import
                     Debug.LogWarning("No shader packages available to install for this pipeline");
                     // no shader packages for the current pipeline are available
                     // will become important after Unity 6000 introduction of 'global pipeline'  when older tool versions are used.
-                    UpdateManager.installedPackageStatus = InstalledPackageStatus.NoPackageAvailable;
+                    UpdateManager.installedShaderStatus = InstalledPackageStatus.NoPackageAvailable;
                     return null;
                 }
             }
@@ -443,7 +518,7 @@ namespace Reallusion.Import
                 ActionRule(DeterminedAction.NothingInstalled_Install_force, InstalledPackageStatus.Absent, PackageVailidity.Absent, freshInstall),
                 ActionRule(DeterminedAction.Error, InstalledPackageStatus.Multiple, PackageVailidity.Invalid, multiple),
                 ActionRule(DeterminedAction.CurrentValid, InstalledPackageStatus.Current, PackageVailidity.Valid, currentValid),
-                ActionRule(DeterminedAction.UninstallReinstall_optional, InstalledPackageStatus.Upgradeable, PackageVailidity.Valid, normalUpgrade),
+                ActionRule(DeterminedAction.UninstallReinstall_force, InstalledPackageStatus.Upgradeable, PackageVailidity.Valid, normalUpgrade),
                 ActionRule(DeterminedAction.UninstallReinstall_optional, InstalledPackageStatus.VersionTooHigh, PackageVailidity.Valid, normalDowngrade),
                 ActionRule(DeterminedAction.UninstallReinstall_force, InstalledPackageStatus.Mismatch, PackageVailidity.Valid, mismatch),
                 ActionRule(DeterminedAction.UninstallReinstall_force, InstalledPackageStatus.Mismatch, PackageVailidity.Invalid, mismatch),
@@ -465,7 +540,7 @@ namespace Reallusion.Import
                 return;
             }
 
-            packageStatus = ActionRulesList.FindAll(x => x.InstalledPackageStatus == UpdateManager.installedPackageStatus);
+            packageStatus = ActionRulesList.FindAll(x => x.InstalledPackageStatus == UpdateManager.installedShaderStatus);
             if (UpdateManager.shaderPackageValid != PackageVailidity.Waiting || UpdateManager.shaderPackageValid != PackageVailidity.None)
                 actionobj = packageStatus.Find(y => y.PackageVailidity == UpdateManager.shaderPackageValid);
 
@@ -478,7 +553,7 @@ namespace Reallusion.Import
             {
                 // action is null
                 Debug.LogWarning("No shader install/update action could be determined.");
-            }               
+            }
         }
 
         public static void DetermineRuntimeAction()
@@ -501,7 +576,7 @@ namespace Reallusion.Import
                 ActionRule(DeterminedAction.NothingInstalled_Install_force, InstalledPackageStatus.Absent, PackageVailidity.Absent, freshInstall),
                 ActionRule(DeterminedAction.Error, InstalledPackageStatus.Multiple, PackageVailidity.Invalid, multiple),
                 ActionRule(DeterminedAction.CurrentValid, InstalledPackageStatus.Current, PackageVailidity.Valid, currentValid),
-                ActionRule(DeterminedAction.UninstallReinstall_optional, InstalledPackageStatus.Upgradeable, PackageVailidity.Valid, normalUpgrade),
+                ActionRule(DeterminedAction.UninstallReinstall_force, InstalledPackageStatus.Upgradeable, PackageVailidity.Valid, normalUpgrade), // if it is upgradeable then force it
                 ActionRule(DeterminedAction.UninstallReinstall_optional, InstalledPackageStatus.VersionTooHigh, PackageVailidity.Valid, normalDowngrade),
                 ActionRule(DeterminedAction.UninstallReinstall_force, InstalledPackageStatus.Mismatch, PackageVailidity.Valid, mismatch),
                 ActionRule(DeterminedAction.UninstallReinstall_force, InstalledPackageStatus.Mismatch, PackageVailidity.Invalid, mismatch),
@@ -511,7 +586,7 @@ namespace Reallusion.Import
 
             ActionRules actionobj = null;
             List<ActionRules> packageStatus = null;
-            
+
             //Debug.LogWarning("UpdateManager.installedRuntimeStatus " + UpdateManager.installedRuntimeStatus);
             //Debug.LogWarning("UpdateManager.runtimePackageValid " + UpdateManager.runtimePackageValid);
 
@@ -520,7 +595,7 @@ namespace Reallusion.Import
                 actionobj = packageStatus.Find(y => y.PackageVailidity == UpdateManager.runtimePackageValid);
 
             if (actionobj != null)
-            {                
+            {
                 UpdateManager.determinedRuntimeAction = actionobj;
                 //Debug.Log(Application.dataPath + " -- " + actionobj.ResultString);
                 //Debug.LogWarning("actionobj UpdateManager.determinedRuntimeAction " + UpdateManager.determinedRuntimeAction.DeterminedShaderAction);
@@ -629,11 +704,11 @@ namespace Reallusion.Import
                                     }
                                 }
                             }
-                            
+
                             string packageAssetPath = AssetDatabase.GUIDToAssetPath(selectedPackage);
                             packageManifest.referenceMainfestPath = manifestAssetPath;
                             packageManifest.referenceShaderPackagePath = packageAssetPath;
-                            manifestPackageMap.Add(packageManifest);                            
+                            manifestPackageMap.Add(packageManifest);
                         }
                     }
                 }
@@ -718,7 +793,7 @@ namespace Reallusion.Import
         {
             UpdateManager.installedShaderVersion = new Version(0, 0, 0);
             UpdateManager.installedShaderPipelineVersion = PipelineVersion.None;
-            UpdateManager.installedPackageStatus = InstalledPackageStatus.None;
+            UpdateManager.installedShaderStatus = InstalledPackageStatus.None;
             UpdateManager.shaderPackageValid = PackageVailidity.Waiting;
             UpdateManager.runtimePackageValid = PackageVailidity.Waiting;
             //GetInstalledPipelinesAync();
@@ -801,7 +876,7 @@ namespace Reallusion.Import
 
             UpdateManager.installedPipelines = installed;
 
-            (PipelineVersion, PipelineVersion) activePipelineVersion = DetermineActivePipelineVersion(packageList);            
+            (PipelineVersion, PipelineVersion) activePipelineVersion = DetermineActivePipelineVersion(packageList);
             UpdateManager.activePipelineVersion = activePipelineVersion.Item1;
             UpdateManager.activeLegacyPipelineVersion = activePipelineVersion.Item2;
 
@@ -890,7 +965,7 @@ namespace Reallusion.Import
         {
             public Version Min;
             public Version Max;
-            
+
             public PipelineVersion Version;
 
             public VersionLimits(Version min, Version max, PipelineVersion version)
@@ -921,7 +996,10 @@ namespace Reallusion.Import
                     Rule(new Version(10, 0, 0), new Version(12, 0, 0), PipelineVersion.URP10),
                     Rule(new Version(12, 0, 0), new Version(14, 0, 0), PipelineVersion.URP12),
                     Rule(new Version(14, 0, 0), new Version(17, 0, 0), PipelineVersion.URP14),
-                    Rule(new Version(17, 0, 0), new Version(100, 99, 99), PipelineVersion.URP17)
+                    Rule(new Version(17, 0, 0), new Version(17, 1, 0), PipelineVersion.URP17),
+                    Rule(new Version(17, 1, 0), new Version(17, 2, 0), PipelineVersion.URP171),
+                    Rule(new Version(17, 2, 0), new Version(17, 3, 0), PipelineVersion.URP172),
+                    Rule(new Version(17, 3, 0), new Version(100, 99, 99), PipelineVersion.URP173)
                 };
 
                 VersionLimits result = urpRules.Find(z => version >= z.Min && version < z.Max);
@@ -973,7 +1051,7 @@ namespace Reallusion.Import
                 {
                     UpdateManager.platformRestriction = PlatformRestriction.URPWebGL;
                     return PipelineVersion.URP12;
-                }                
+                }
 
                 List<VersionLimits> urpRules = new List<VersionLimits>
                 {
@@ -1025,7 +1103,7 @@ namespace Reallusion.Import
         }
 
         public static void TestVersionResponse()
-        {            
+        {
             for (int i = 10; i < 18; i++)
             {
                 for (int j = 0; j < 3; j++)
@@ -1095,9 +1173,9 @@ namespace Reallusion.Import
 
             if (install)
             {
-                if (UpdateManager.currentPackageManifest != null)
+                if (UpdateManager.latestShaderPackageManifest != null)
                 {
-                    InstallShaderPackage(UpdateManager.currentPackageManifest, false);
+                    InstallShaderPackage(UpdateManager.latestShaderPackageManifest, false);
                     UpdaterWindowCheckStatus();
                 }
                 else
@@ -1159,8 +1237,8 @@ namespace Reallusion.Import
 
             if (install)
             {
-                Debug.Log(UpdateManager.currentRuntimePackageManifest.referenceShaderPackagePath);
-                InstallRuntimePackage(UpdateManager.currentRuntimePackageManifest, false);
+                Debug.Log(UpdateManager.latestRuntimePackageManifest.referenceShaderPackagePath);
+                InstallRuntimePackage(UpdateManager.latestRuntimePackageManifest, false);
                 UpdaterWindowCheckStatus();
             }
         }
@@ -1168,7 +1246,7 @@ namespace Reallusion.Import
         public static void GUIPerformLegacyShaderInstall()
         {
             //Debug.Log(UpdateManager.currentLegacyPackageManifest.referenceShaderPackagePath);
-            InstallLegacyShaderPackage(UpdateManager.currentLegacyPackageManifest, false);
+            InstallLegacyShaderPackage(UpdateManager.latestLegacyPackageManifest, false);
         }
 
         public static void ProcessPendingActions()
@@ -1184,7 +1262,7 @@ namespace Reallusion.Import
                 if (ImporterWindow.GeneralSettings.pendingShaderInstall)
                 {
                     //Debug.Log("Beginning installation of current shader package");
-                    InstallShaderPackage(UpdateManager.currentPackageManifest, false);
+                    InstallShaderPackage(UpdateManager.latestShaderPackageManifest, false);
                 }
 
                 if (ImporterWindow.GeneralSettings.pendingRuntimeUninstall)
@@ -1196,7 +1274,7 @@ namespace Reallusion.Import
                 if (ImporterWindow.GeneralSettings.pendingRuntimeInstall)
                 {
                     //Debug.Log("Beginning installation of current runtime package");
-                    InstallRuntimePackage(UpdateManager.currentRuntimePackageManifest, false);
+                    InstallRuntimePackage(UpdateManager.latestRuntimePackageManifest, false);
                 }
 
                 ImporterWindow.GeneralSettings.criticalUpdateRequired = false;
@@ -1223,16 +1301,18 @@ namespace Reallusion.Import
 
             if (ImporterWindow.GeneralSettings != null)
             {
-                ImporterWindow.GeneralSettings.performPostInstallationCheck = true;
+                ImporterWindow.GeneralSettings.performPostInstallationShaderCheck = true;
                 ImporterWindow.GeneralSettings.postInstallShowUpdateWindow = true;
+                ImporterWindow.GeneralSettings.shaderUpdateInProgress = true;
             }
 
-            if (UpdateManager.currentPackageManifest != null)
+            if (UpdateManager.latestShaderPackageManifest != null)
             {
                 if (ImporterWindow.GeneralSettings != null)
                 {
                     //Debug.Log("Attempting installation of current shader package");
-                    ImporterWindow.GeneralSettings.shaderToolVersion = Pipeline.VERSION;
+                    ImporterWindow.GeneralSettings.shaderToolVersion = UpdateManager.latestShaderPackageManifest.Version;
+                    ImporterWindow.GeneralSettings.InstalledShaderRevision = UpdateManager.latestShaderPackageManifest.Revision;
                     ImporterWindow.GeneralSettings.pendingShaderInstall = false;
                 }
 
@@ -1249,14 +1329,17 @@ namespace Reallusion.Import
             if (ImporterWindow.GeneralSettings != null)
             {
                 ImporterWindow.GeneralSettings.performPostInstallationRuntimeCheck = true;
+                ImporterWindow.GeneralSettings.postInstallShowUpdateWindow = true;
+                ImporterWindow.GeneralSettings.runtimeUpdateInProgress = true;
             }
 
-            if (UpdateManager.currentRuntimePackageManifest != null)
+            if (UpdateManager.latestRuntimePackageManifest != null)
             {
                 if (ImporterWindow.GeneralSettings != null)
                 {
                     //Debug.Log("Attempting installation of current runtime package");
-                    ImporterWindow.GeneralSettings.runtimeToolVersion = Pipeline.VERSION;
+                    ImporterWindow.GeneralSettings.runtimeToolVersion = UpdateManager.latestRuntimePackageManifest.Version;
+                    ImporterWindow.GeneralSettings.installedRuntimeRevision = UpdateManager.latestRuntimePackageManifest.Revision;
                     ImporterWindow.GeneralSettings.pendingRuntimeInstall = false;
                 }
 
@@ -1270,7 +1353,7 @@ namespace Reallusion.Import
 
         public static void InstallLegacyShaderPackage(ShaderPackageManifest shaderPackageManifest, bool interactive = true)
         {
-            if (UpdateManager.currentLegacyPackageManifest != null)
+            if (UpdateManager.latestLegacyPackageManifest != null)
             {
                 Debug.Log($"Installing 'Legacy Shader Package' for {shaderPackageManifest.Pipeline} version {shaderPackageManifest.Version} from package: '{shaderPackageManifest.SourcePackageName}'");
                 AssetDatabase.ImportPackage(shaderPackageManifest.referenceShaderPackagePath, interactive);
@@ -1279,7 +1362,7 @@ namespace Reallusion.Import
 
 
         private static void OnImportPackageCompleted(string packagename)
-        {            
+        {
             Debug.Log($"Imported package: {packagename}");
 #if UNITY_2021_3_OR_NEWER
             // this will be handled by the callback: AssetDatabase.onImportPackageItemsCompleted
@@ -1509,6 +1592,13 @@ namespace Reallusion.Import
                     }
             }
 
+            // try to repair HDRP diffuse profiles.
+            if (packageType == PackageType.Shader &&
+                manifest.Pipeline.ToString().StartsWith("HDRP"))
+            {
+                Pipeline.AddDiffusionProfilesHDRP();
+            }
+
             //UpdateManager.updateMessage = message;  // clear UpdateManager.updateMessage after closing the message.
             if (ImporterWindow.GeneralSettings != null)
             {
@@ -1530,16 +1620,17 @@ namespace Reallusion.Import
         public static void UnInstallShaderPackage(bool flagReinstall = false)
         {
             if (ImporterWindow.GeneralSettings != null)
+            {
+                ImporterWindow.GeneralSettings.shaderUpdateInProgress = true;
                 ImporterWindow.GeneralSettings.pendingShaderUninstall = false;
 
-            if (flagReinstall)
-            {
-                if (ImporterWindow.GeneralSettings != null)
+                if (flagReinstall)
                 {
                     //Debug.Log("Attempting uninstall of existing shader package");
                     ImporterWindow.GeneralSettings.pendingShaderInstall = true;
                 }
             }
+
 
             string manifestLabel = "_RL_shadermanifest";
             string[] searchLoc = new string[] { "Assets" };
@@ -1559,8 +1650,8 @@ namespace Reallusion.Import
             {
                 string assetPath = AssetDatabase.GUIDToAssetPath(guid);
                 string[] split = assetPath.Split('_');
-                Debug.Log("Trying to uninstall shader package:  Pipeline:" + split[split.Length -3] + " Version: " + split[split.Length - 4]);
-                
+                Debug.Log("Trying to uninstall shader package:  Pipeline:" + split[split.Length - 3] + " Version: " + split[split.Length - 4]);
+
                 if (TryUnInstallPackage(guid))
                 {
                     Debug.Log("Package uninstalled.");
@@ -1570,17 +1661,20 @@ namespace Reallusion.Import
                     Debug.Log("Package could not be fully uninstalled.");
                 }
             }
+
+            if (ImporterWindow.GeneralSettings != null && !flagReinstall)
+                ImporterWindow.GeneralSettings.shaderUpdateInProgress = false;
         }
 
 
         public static void UnInstallRuntimePackage(bool flagReinstall = false)
         {
             if (ImporterWindow.GeneralSettings != null)
+            {
+                ImporterWindow.GeneralSettings.runtimeUpdateInProgress = true;
                 ImporterWindow.GeneralSettings.pendingRuntimeUninstall = false;
 
-            if (flagReinstall)
-            {
-                if (ImporterWindow.GeneralSettings != null)
+                if (flagReinstall)
                 {
                     //Debug.Log("Attempting uninstall of existing runtime package");
                     ImporterWindow.GeneralSettings.pendingRuntimeInstall = true;
@@ -1616,6 +1710,9 @@ namespace Reallusion.Import
                     Debug.Log("Package could not be fully uninstalled.");
                 }
             }
+
+            if (ImporterWindow.GeneralSettings != null && !flagReinstall)
+                ImporterWindow.GeneralSettings.runtimeUpdateInProgress = false;
         }
 
         private static bool TryUnInstallPackage(string guid, bool toTrash = true)
@@ -1772,7 +1869,7 @@ namespace Reallusion.Import
 
             UpdateManager.installedShaderVersion = new Version(0, 0, 0);
             UpdateManager.installedShaderPipelineVersion = PipelineVersion.None;
-            UpdateManager.installedPackageStatus = InstalledPackageStatus.None;
+            UpdateManager.installedShaderStatus = InstalledPackageStatus.None;
 
             if (ShaderPackageUpdater.Instance != null)
                 ShaderPackageUpdater.Instance.UpdateGUI();
@@ -1795,6 +1892,7 @@ namespace Reallusion.Import
             URP17 = 117,
             URP171 = 1171,
             URP172 = 1172,
+            URP173 = 1173,
             URP18 = 118,
             URP19 = 119,
             URP20 = 120,
@@ -1813,6 +1911,7 @@ namespace Reallusion.Import
             HDRP17 = 217,
             HDRP171 = 2171,
             HDRP172 = 2172,
+            HDRP173 = 2173,
             HDRP18 = 218,
             HDRP19 = 219,
             HDRP20 = 220,
@@ -1831,6 +1930,7 @@ namespace Reallusion.Import
             public string FileName;
             public PipelineVersion Pipeline;
             public string Version;
+            public int Revision;
             public string SourcePackageName;
             public bool VersionEdit;
             public string ManifestPath;
@@ -1840,11 +1940,12 @@ namespace Reallusion.Import
             public string referenceShaderPackagePath;
             public List<ShaderPackageItem> Items;
 
-            public ShaderPackageManifest(string name, PipelineVersion pipeline, string version)
+            public ShaderPackageManifest(string name, PipelineVersion pipeline, string version, int revision)
             {
                 FileName = name;
                 Pipeline = pipeline;
                 Version = version;
+                Revision = revision;
                 SourcePackageName = string.Empty;
                 VersionEdit = false;
                 ManifestPath = string.Empty;
@@ -1961,11 +2062,11 @@ namespace Reallusion.Import
         {
             string input = str.Replace("\\", "/");
             string datapath = Application.dataPath.Replace("\\", "/");
-            
+
             if (input.iContains(datapath))
             {
                 return input.Remove(0, Application.dataPath.Length - 6).Replace("\\", "/");
-            }                
+            }
             else
             {
                 return string.Empty;
