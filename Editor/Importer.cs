@@ -22,6 +22,7 @@ using System.IO;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.SocialPlatforms.Impl;
 
 namespace Reallusion.Import
 {
@@ -31,6 +32,9 @@ namespace Reallusion.Import
         private readonly QuickJSON jsonData;
         private readonly QuickJSON jsonPhysicsData;
         private readonly string fbxPath;
+        private readonly string fbxFolder;
+        private readonly string fbmFolder;
+        private readonly string texFolder;
         private readonly string materialsFolder;
         private readonly string characterName;
         private readonly string motionPrefix;
@@ -41,6 +45,7 @@ namespace Reallusion.Import
 #else
         private readonly int id;
 #endif
+        private readonly List<string> textureFolders;
         private readonly ModelImporter importer;
         private readonly List<string> importAssets = new List<string>();
         private CharacterInfo characterInfo;
@@ -291,29 +296,31 @@ namespace Reallusion.Import
             AssetDatabase.Refresh();
             importer = (ModelImporter)AssetImporter.GetAtPath(fbxPath);
             characterName = info.name;
+            fbxFolder = info.folder;
             characterBoneScale = info.GetBoneScale();
             motionPrefix = info.motionPrefix;
 
+            // construct the texture folder list for the character.
+            fbmFolder = Path.Combine(fbxFolder, characterName + ".fbm");
+            texFolder = Path.Combine(fbxFolder, "textures", characterName);
+            textureFolders = new List<string>() { fbmFolder, texFolder };
+
             Util.LogInfo("Using texture folders:");
-            Util.LogInfo("    " + characterInfo.fbmFolder);
-            Util.LogInfo("    " + characterInfo.texFolder);
+            Util.LogInfo("    " + fbmFolder);
+            Util.LogInfo("    " + texFolder);
 
             // find or create the materials folder for the character import.
-            string parentMaterialsFolder = Util.CreateFolder(info.folder, MATERIALS_FOLDER);
+            string parentMaterialsFolder = Util.CreateFolder(fbxFolder, MATERIALS_FOLDER);
             materialsFolder = Util.CreateFolder(parentMaterialsFolder, characterName);
             Util.LogInfo("Using material folder: " + materialsFolder);
 
             // fetch the character json export data.
-            if (!info.IsValidJsonData())
-            {
-                throw new Exception($"Unable to find valid Json data for character: {characterName}! Aborting setup.");
-            }
             jsonData = info.JsonData;
+            if (jsonData == null) Util.LogError("Unable to find Json data!");
+
             jsonPhysicsData = info.PhysicsJsonData;
             if (jsonPhysicsData == null)
-            {
-                Util.LogWarn($"Unable to find Json physics data for character: {characterName}!");
-            }
+                Util.LogWarn("Unable to find Json physics data!");
 
             string jsonVersion = jsonData?.GetStringValue(characterName + "/Version");
             if (!string.IsNullOrEmpty(jsonVersion))
@@ -357,11 +364,11 @@ namespace Reallusion.Import
             }
 
             // only if we need to...
-            if (!AssetDatabase.IsValidFolder(characterInfo.fbmFolder))
+            if (!AssetDatabase.IsValidFolder(fbmFolder))
             {
-                Util.LogInfo("Extracting embedded textures to: " + characterInfo.fbmFolder);
+                Util.LogInfo("Extracting embedded textures to: " + fbmFolder);
                 Util.CreateFolder(fbxPath, characterName + ".fbm");
-                importer.ExtractTextures(characterInfo.fbmFolder);
+                importer.ExtractTextures(fbmFolder);
             }
 
             // clean up missing material remaps:
@@ -915,7 +922,7 @@ namespace Reallusion.Import
         public enum AlphaType { Opaque, Cutout, Gradient, Translucent };
         Dictionary<string, (AlphaType, float, float, float, float, float)> AlphaTypeCache = new Dictionary<string, (AlphaType, float, float, float, float, float)>();
 
-        public (AlphaType, float) GetAlphaType(string texAssetPath, bool useAlphaChannel = true)
+        public (AlphaType, float) GetAlphaType(string texAssetPath, bool inAlphaChannel = true)
         {
             AlphaType alphaType = AlphaType.Opaque;
             float alphaScore = 1f;
@@ -932,26 +939,26 @@ namespace Reallusion.Import
             {
                 uint[] histogram;
 
-                if (textureImporter.DoesSourceTextureHaveAlpha() && useAlphaChannel)
+                if (textureImporter.DoesSourceTextureHaveAlpha() || !inAlphaChannel)
                 {
                     Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(texAssetPath);
                     histogram = ComputeBake.ComputeHistogramAlpha(tex, 64);
                     res = AnalyseAlphaType(histogram, tex, 8);
                     alphaType = res.Item1;
                     alphaScore = res.Item2;
-                    Util.LogInfo($"AlphaType: {tex.name} - {alphaType} : {Mathf.Round(alphaScore * 1000f) / 10f}%\n" +
-                                 $"Scores: Opaque={Mathf.Round(res.Item3 * 1000f) / 10f}% Cutout={Mathf.Round(res.Item4 * 1000f) / 10f}% Gradient={Mathf.Round(res.Item5 * 1000f) / 10f}% Translucent={Mathf.Round(res.Item6 * 1000f) / 10f}%");
+                    Debug.Log($"AlphaType: {tex.name} - {alphaType} : {Mathf.Round(alphaScore * 1000f) / 10f}%\n" +
+                              $"Scores: Opaque={Mathf.Round(res.Item3 * 1000f) / 10f}% Cutout={Mathf.Round(res.Item4 * 1000f) / 10f}% Gradient={Mathf.Round(res.Item5 * 1000f) / 10f}% Translucent={Mathf.Round(res.Item6 * 1000f) / 10f}%");
                     AlphaTypeCache.Add(texAssetPath, res);
                 }
-                else if (!useAlphaChannel)
+                else if (!inAlphaChannel)
                 {
                     Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(texAssetPath);
                     histogram = ComputeBake.ComputeHistogramRed(tex, 64);
                     res = AnalyseAlphaType(histogram, tex, 8);
                     alphaType = res.Item1;
                     alphaScore = res.Item2;
-                    Util.LogInfo($"AlphaType: {tex.name} - {alphaType} : {Mathf.Round(alphaScore * 1000f) / 10f}%\n" +
-                                 $"Scores: Opaque={Mathf.Round(res.Item3 * 1000f) / 10f}% Cutout={Mathf.Round(res.Item4 * 1000f) / 10f}% Gradient={Mathf.Round(res.Item5 * 1000f) / 10f}% Translucent={Mathf.Round(res.Item6 * 1000f) / 10f}%");
+                    Debug.Log($"AlphaType: {tex.name} - {alphaType} : {Mathf.Round(alphaScore * 1000f) / 10f}%\n" +
+                              $"Scores: Opaque={Mathf.Round(res.Item3 * 1000f) / 10f}% Cutout={Mathf.Round(res.Item4 * 1000f) / 10f}% Gradient={Mathf.Round(res.Item5 * 1000f) / 10f}% Translucent={Mathf.Round(res.Item6 * 1000f) / 10f}%");
                     AlphaTypeCache.Add(texAssetPath, res);
                 }
             }
@@ -1019,14 +1026,14 @@ namespace Reallusion.Import
                 {
                     // imports from blender will have separate opacity and diffuse
                     // and the opacity wil be in the RGB channels
-                    string assetPath = characterInfo.GetTexPath(opacityTexturePath);
+                    string assetPath = Util.CombineJsonTexPath(fbxFolder, opacityTexturePath);
                     var res = GetAlphaType(assetPath, false);
                     alphaType = res.Item1;
                     alphaScore = res.Item2;
                 }
                 else if (!string.IsNullOrEmpty(diffuseTexturePath))
                 {
-                    string assetPath = characterInfo.GetTexPath(diffuseTexturePath);
+                    string assetPath = Util.CombineJsonTexPath(fbxFolder, diffuseTexturePath);
                     var res = GetAlphaType(assetPath, true);
                     alphaType = res.Item1;
                     alphaScore = res.Item2;
@@ -1159,9 +1166,9 @@ namespace Reallusion.Import
             if (obj.name.StartsWith("CC_Base_Body") ||
                 obj.name.StartsWith("CC_Base_Tongue"))
             {
-                return Path.Combine(characterInfo.texFolder, characterName, obj.name, sourceName);
+                return Path.Combine(texFolder, characterName, obj.name, sourceName);
             }
-            return Path.Combine(characterInfo.texFolder, obj.name, sourceName);
+            return Path.Combine(texFolder, obj.name, sourceName);
         }
 
         private Material CreateRemapMaterial(MaterialType materialType, Material sharedMaterial,
@@ -3355,7 +3362,7 @@ namespace Reallusion.Import
                         else
                         {
                             mat.EnableKeyword("_VERTEX_DISPLACEMENT");
-                            mat.SetFloatIf("_DisplacementMode", 1f);  // 1 - Vertex displacement, 2 - pixel displacement (bump?)
+                            mat.SetFloatIf("_DisplacementMode", 1f);  // 1 - Vertex displacement, 2 - pixel displacement (bump?)                            
 
                             ConnectTextureTo(sourceName, mat, "_HeightMap", "Displacement",
                                 matJson, "Textures/Displacement",
@@ -3600,18 +3607,13 @@ namespace Reallusion.Import
             if (!string.IsNullOrEmpty(jsonTexturePath))
             {
                 // try to load the texture asset directly from the json path.
-                string path = characterInfo.GetTexPath(jsonTexturePath);
-                if (File.Exists(path))
-                {
-                    tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-                    name = Path.GetFileNameWithoutExtension(path);
-                }
+                tex = AssetDatabase.LoadAssetAtPath<Texture2D>(Util.CombineJsonTexPath(fbxFolder, jsonTexturePath));
+                name = Path.GetFileNameWithoutExtension(jsonTexturePath);
 
                 // if that fails, try to find the texture by name in the texture folders.
                 if (!tex && search)
                 {
-                    tex = Util.FindTexture(characterInfo.textureFolders.ToArray(), name);
-                    if (tex) Util.LogWarn($"Unable to find texture specified in Json: {path}\nFound alternative by name: {name}");
+                    tex = Util.FindTexture(textureFolders.ToArray(), name);
                 }
             }
 
@@ -3619,8 +3621,7 @@ namespace Reallusion.Import
             if (!tex && search)
             {
                 name = materialName + "_" + suffix;
-                tex = Util.FindTexture(characterInfo.textureFolders.ToArray(), name);
-                if (tex) Util.LogInfo($"Found texture in material folder: {name}");
+                tex = Util.FindTexture(textureFolders.ToArray(), name);
             }
 
             return tex;
@@ -3632,7 +3633,7 @@ namespace Reallusion.Import
             name = "";
 
             name = materialName + "_" + suffix;
-            texArray = Util.FindTextureArray(characterInfo.textureFolders.ToArray(), name);
+            texArray = Util.FindTextureArray(textureFolders.ToArray(), name);
 
             return texArray;
         }
@@ -3828,7 +3829,7 @@ namespace Reallusion.Import
 
         private void ApplyWrinkleMasks(Material mat)
         {
-            string[] folders = new string[] { "Assets", characterInfo.fbmFolder, characterInfo.texFolder };
+            string[] folders = new string[] { "Assets", fbmFolder, texFolder };
 
             string[] maskNames = new string[] { "RL_WrinkleMask_Set1A", "RL_WrinkleMask_Set1B", "RL_WrinkleMask_Set2", "RL_WrinkleMask_Set3", "RL_WrinkleMask_Set123" };
             string[] refNames = new string[] { "_WrinkleMaskSet1A", "_WrinkleMaskSet1B", "_WrinkleMaskSet2", "_WrinkleMaskSet3", "_WrinkleMaskSet123" };

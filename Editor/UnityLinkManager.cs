@@ -28,7 +28,6 @@ using System.Text;
 using System.Threading;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.Diagnostics;
 using UnityEngine.Playables;
 using Formatting = Newtonsoft.Json.Formatting;
 
@@ -79,7 +78,7 @@ namespace Reallusion.Import
         {
             string defaultPath = "Assets/Reallusion/DataLink_Imports";
             string fullPath = defaultPath.UnityAssetPathToFullPath();
-            //Util.LogWarnFormat("GetDefaultFullFolderPath " + fullPath);
+            //Debug.LogWarningFormat("GetDefaultFullFolderPath " + fullPath);
             return fullPath;
 
         }
@@ -104,7 +103,7 @@ namespace Reallusion.Import
         #region Setup
         public static void InitConnection()
         {
-            //Util.LogWarn("Starting InitConnection ");
+            //Debug.LogWarning("Starting InitConnection ");
             SetupUpdateWorker();
             SetupLogging();
             //StartQueue();
@@ -160,7 +159,7 @@ namespace Reallusion.Import
         {
             clientThreadActive = true;
             retryConnection = true;
-            //Util.LogWarn("Parsing: " + (IS_CLIENT_LOCAL ? LOCAL_HOST : REMOTE_HOST));
+            //Debug.LogWarning("Parsing: " + (IS_CLIENT_LOCAL ? LOCAL_HOST : REMOTE_HOST));
             IPAddress ipAddress = IPAddress.Parse(IS_CLIENT_LOCAL ? LOCAL_HOST : REMOTE_HOST);
             int port = 9334;
 
@@ -257,7 +256,7 @@ namespace Reallusion.Import
                 }
                 catch (Exception e)
                 {
-                    Util.LogError(e.ToString());
+                    Debug.Log(e.ToString());
                 }
             }
 
@@ -268,7 +267,7 @@ namespace Reallusion.Import
             }
             catch (Exception e)
             {
-                Util.LogError(e.ToString());
+                Debug.Log(e.ToString());
             }
 
             clientThreadActive = false;
@@ -295,7 +294,7 @@ namespace Reallusion.Import
             }
             catch (Exception ex)
             {
-                Util.LogError("Header read: " + ex);
+                Debug.Log("Header read: " + ex);
             }
 
             if (headerBytesRead == 8)
@@ -327,7 +326,7 @@ namespace Reallusion.Import
                         }
                         catch (Exception ex)
                         {
-                            Util.LogError("Data read: " + ex);
+                            Debug.Log("Data read: " + ex);
                         }
                         data = ConcatBytes(data, chunk);
                         size -= bytesRead;
@@ -354,7 +353,7 @@ namespace Reallusion.Import
                         }
                         catch (Exception ex)
                         {
-                            Util.LogError("Data read: " + ex);
+                            Debug.Log("Data read: " + ex);
                         }
 
                         int zipSize = GetCurrentEndianWord(len, SourceEndian.BigEndian);
@@ -388,7 +387,7 @@ namespace Reallusion.Import
                             }
                             catch (Exception ex)
                             {
-                                Util.LogError("Data read: " + ex);
+                                Debug.Log("Data read: " + ex);
                             }
                             zipSize -= bytesRead;
                         }
@@ -563,7 +562,7 @@ namespace Reallusion.Import
             }
             catch (Exception ex)
             {
-                Util.LogError(ex.ToString());
+                Debug.Log(ex.ToString());
             }
         }
         #endregion Server messaging
@@ -588,7 +587,7 @@ namespace Reallusion.Import
             }
             catch (Exception ex)
             {
-                Util.LogError(ex.ToString());
+                Debug.Log(ex.ToString());
             }
         }
 
@@ -622,20 +621,20 @@ namespace Reallusion.Import
             }
             catch (Exception ex)
             {
-                Util.LogError(ex.ToString());
+                Debug.Log(ex.ToString());
             }
         }
 
         public static void CleanupBeforeAssemblyReload()
         {
-            //Util.LogWarn("adding CleanupDelegate to AssemblyReloadEvents.beforeAssemblyReload");
+            //Debug.LogWarning("adding CleanupDelegate to AssemblyReloadEvents.beforeAssemblyReload");
             AssemblyReloadEvents.beforeAssemblyReload -= CleanupDelegate;
             AssemblyReloadEvents.beforeAssemblyReload += CleanupDelegate;
         }
 
         static void CleanupDelegate()
         {
-            //Util.LogWarn("CleanupDelegate called by AssemblyReloadEvents.beforeAssemblyReload");
+            //Debug.LogWarning("CleanupDelegate called by AssemblyReloadEvents.beforeAssemblyReload");
             if (reconnect)
             {
                 //Debug.Log("Setting up reconnect");
@@ -643,7 +642,7 @@ namespace Reallusion.Import
             }
             else
             {
-                //Util.LogWarn("SetConnectedTimeStamp(true)");
+                //Debug.LogWarning("SetConnectedTimeStamp(true)");
                 SetConnectedTimeStamp(true);
             }
 
@@ -653,7 +652,7 @@ namespace Reallusion.Import
                 {
                     if (client.Connected && stream.CanWrite)
                     {
-                        Util.LogInfo("Disconnecting");
+                        Debug.Log("Disconnecting");
                         reconnect = false;
                         SendMessage(OpCodes.DISCONNECT);
                         stream.Close();
@@ -663,13 +662,13 @@ namespace Reallusion.Import
             }
             catch (Exception ex)
             {
-                Util.LogError(ex.ToString());
+                Debug.Log(ex.ToString());
             }
 
             listening = false;
             EditorApplication.update -= QueueDelegate;
             AssemblyReloadEvents.beforeAssemblyReload -= CleanupDelegate;
-            //Util.LogWarn("AssemblyReloadEvents.beforeAssemblyReload done");
+            //Debug.LogWarning("AssemblyReloadEvents.beforeAssemblyReload done");
         }
 
         // Automated reconnection for assembly reloads
@@ -770,12 +769,12 @@ namespace Reallusion.Import
                         {
                             qItem.Hello = JsonConvert.DeserializeObject<JsonHello>(dataString);
                         }
-                        catch (Exception ex) { Util.LogError(ex.Message); add = false; }
+                        catch (Exception ex) { Debug.Log(ex); add = false; }
                         break;
                     }
                 case OpCodes.NOTIFY:
                     {
-                        try { qItem.Notify = JsonConvert.DeserializeObject<JsonNotify>(dataString); } catch (Exception ex) { Util.LogError(ex.Message); add = false; }
+                        try { qItem.Notify = JsonConvert.DeserializeObject<JsonNotify>(dataString); } catch (Exception ex) { Debug.Log(ex); add = false; }
                         break;
                     }
                 case OpCodes.STOP:
@@ -795,7 +794,7 @@ namespace Reallusion.Import
                     }
                 case OpCodes.CHARACTER:
                     {
-                        try { qItem.Character = JsonConvert.DeserializeObject<JsonCharacter>(dataString); } catch (Exception ex) { Util.LogError(ex.Message); add = false; }
+                        try { qItem.Character = JsonConvert.DeserializeObject<JsonCharacter>(dataString); } catch (Exception ex) { Debug.Log(ex); add = false; }
                         if (qItem.Character != null)
                         {
                             if (!string.IsNullOrEmpty(qItem.Character.RemoteId)) { qItem.RemoteId = qItem.Character.RemoteId; }
@@ -805,12 +804,12 @@ namespace Reallusion.Import
                     }
                 case OpCodes.CHARACTER_UPDATE:
                     {
-                        try { qItem.CharacterUpdate = JsonConvert.DeserializeObject<JsonCharacterUpdate>(dataString); } catch (Exception ex) { Util.LogError(ex.Message); add = false; }
+                        try { qItem.CharacterUpdate = JsonConvert.DeserializeObject<JsonCharacterUpdate>(dataString); } catch (Exception ex) { Debug.Log(ex); add = false; }
                         break;
                     }
                 case OpCodes.PROP:
                     {
-                        try { qItem.Prop = JsonConvert.DeserializeObject<JsonProp>(dataString); } catch (Exception ex) { Util.LogError(ex.Message); add = false; }
+                        try { qItem.Prop = JsonConvert.DeserializeObject<JsonProp>(dataString); } catch (Exception ex) { Debug.Log(ex); add = false; }
                         if (qItem.Prop != null)
                         {
                             if (!string.IsNullOrEmpty(qItem.Prop.RemoteId)) { qItem.RemoteId = qItem.Prop.RemoteId; }
@@ -820,7 +819,7 @@ namespace Reallusion.Import
                     }
                 case OpCodes.STAGING:
                     {
-                        try { qItem.Staging = JsonConvert.DeserializeObject<JsonStaging>(dataString); } catch (Exception ex) { Util.LogError(ex.Message); add = false; }
+                        try { qItem.Staging = JsonConvert.DeserializeObject<JsonStaging>(dataString); } catch (Exception ex) { Debug.Log(ex); add = false; }
                         if (qItem.Staging != null)
                         {
                             if (!string.IsNullOrEmpty(qItem.Staging.RemoteId)) { qItem.RemoteId = qItem.Staging.RemoteId; }
@@ -830,17 +829,17 @@ namespace Reallusion.Import
                     }
                 case OpCodes.CAMERA: // ...
                     {
-                        Util.LogDetail(dataString);
+                        Debug.Log(dataString);
                         break;
                     }
                 case OpCodes.UPDATE_REPLACE:
                     {
-                        try { qItem.UpdateReplace = JsonConvert.DeserializeObject<JsonUpdateReplace>(dataString); } catch (Exception ex) { Util.LogError(ex.Message); add = false; }
+                        try { qItem.UpdateReplace = JsonConvert.DeserializeObject<JsonUpdateReplace>(dataString); } catch (Exception ex) { Debug.Log(ex); add = false; }
                         break;
                     }
                 case OpCodes.MOTION:
                     {
-                        try { qItem.Motion = JsonConvert.DeserializeObject<JsonMotion>(dataString); } catch (Exception ex) { Util.LogError(ex.Message); add = false; }
+                        try { qItem.Motion = JsonConvert.DeserializeObject<JsonMotion>(dataString); } catch (Exception ex) { Debug.Log(ex); add = false; }
                         if (qItem.Motion != null)
                         {
                             if (!string.IsNullOrEmpty(qItem.Motion.RemoteId)) { qItem.RemoteId = qItem.Motion.RemoteId; }
@@ -850,27 +849,27 @@ namespace Reallusion.Import
                     }
                 case OpCodes.LIGHTING:
                     {
-                        try { qItem.Lighting = JsonConvert.DeserializeObject<JsonLighting>(dataString); } catch (Exception ex) { Util.LogError(ex.Message); add = false; }
+                        try { qItem.Lighting = JsonConvert.DeserializeObject<JsonLighting>(dataString); } catch (Exception ex) { Debug.Log(ex); add = false; }
                         break;
                     }
                 case OpCodes.CAMERA_SYNC:
                     {
-                        try { qItem.CameraSync = JsonConvert.DeserializeObject<JsonCameraSync>(dataString); } catch (Exception ex) { Util.LogError(ex.Message); add = false; }
+                        try { qItem.CameraSync = JsonConvert.DeserializeObject<JsonCameraSync>(dataString); } catch (Exception ex) { Debug.Log(ex); add = false; }
                         break;
                     }
                 case OpCodes.FRAME_SYNC:
                     {
-                        try { qItem.FrameSync = JsonConvert.DeserializeObject<JsonFrameSync>(dataString); } catch (Exception ex) { Util.LogError(ex.Message); add = false; }
+                        try { qItem.FrameSync = JsonConvert.DeserializeObject<JsonFrameSync>(dataString); } catch (Exception ex) { Debug.Log(ex); add = false; }
                         break;
                     }
                 case OpCodes.REQUEST:
                     {
-                        try { qItem.Request = JsonConvert.DeserializeObject<JsonRequest>(dataString); } catch (Exception ex) { Util.LogError(ex.Message); add = false; }
+                        try { qItem.Request = JsonConvert.DeserializeObject<JsonRequest>(dataString); } catch (Exception ex) { Debug.Log(ex); add = false; }
                         break;
                     }
                 case OpCodes.RELINK:
                     {
-                        try { qItem.Relink = JsonConvert.DeserializeObject<JsonRelink>(dataString); } catch (Exception ex) { Util.LogError(ex.Message); add = false; }
+                        try { qItem.Relink = JsonConvert.DeserializeObject<JsonRelink>(dataString); } catch (Exception ex) { Debug.Log(ex); add = false; }
                         break;
                     }
             }
@@ -883,8 +882,8 @@ namespace Reallusion.Import
             }
             else
             {
-                Util.LogWarn("Broken Item: " + opCode.ToString());
-                Util.LogWarn(dataString);
+                Debug.LogWarning("Broken Item: " + opCode.ToString());
+                Debug.LogWarning(dataString);
             }
         }
 
@@ -920,7 +919,7 @@ namespace Reallusion.Import
             hello.Package = Pipeline.VERSION;
             hello.LocalClient = IS_CLIENT_LOCAL;
 
-            // Util.LogWarn(Application.productName);  // update plugin to use the project name (Application.productName)
+            // Debug.LogWarning(Application.productName);  // update plugin to use the project name (Application.productName)
 
             jsonString = JsonConvert.SerializeObject(hello);
             //Debug.Log(jsonString);
@@ -1066,7 +1065,7 @@ namespace Reallusion.Import
                     }
                 case OpCodes.REQUEST:
                     {
-                        //Util.LogWarn("The 'Send Scene' function is not yet fully implemented - Use with caution.");
+                        //Debug.LogWarning("The 'Send Scene' function is not yet fully implemented - Use with caution.");
                         RespondToSceneRequest(next);
                         break;
                     }
@@ -1113,7 +1112,7 @@ namespace Reallusion.Import
             // https://docs.unity3d.com/6000.0/Documentation/ScriptReference/SceneView-size.html
             float size = Mathf.Sin(halfAngle * Mathf.Deg2Rad) * adjacent;
             scene.LookAt(pointToLookAt, corrected, size * 0.9f);
-            //Util.LogWarn("lookPos " + pointToLookAt + " focalLength " + adjacent);
+            //Debug.LogWarning("lookPos " + pointToLookAt + " focalLength " + adjacent);
         }
         static void OLDCameraSync(QueueItem item)
         {
@@ -1172,8 +1171,8 @@ namespace Reallusion.Import
             }
             catch (Exception e)
             {
-                Util.LogWarn("Import Failure");
-                Util.LogWarn(e.ToString());
+                Debug.LogWarning("Import Failure");
+                Debug.LogWarning(e.ToString());
             }
         }
 
@@ -1238,7 +1237,7 @@ namespace Reallusion.Import
                 }
                 catch
                 {
-                    Util.LogError("Cannot format scene request reply");
+                    Debug.Log("Cannot format scene request reply");
                 }
             }
         }
@@ -1321,7 +1320,7 @@ namespace Reallusion.Import
                 }
                 catch
                 {
-                    Util.LogError("Cannot format relink reply");
+                    Debug.Log("Cannot format relink reply");
                 }
             }
         }
@@ -2137,7 +2136,7 @@ namespace Reallusion.Import
 
         static bool ByteToBool(byte[] data)
         {
-            if (data.Length != 1) { Util.LogWarn("Only byte[] of 1 byte accepted as input."); return false; }
+            if (data.Length != 1) { Debug.LogWarning("Only byte[] of 1 byte accepted as input."); return false; }
             return (data[0] == 1);
         }
 
@@ -2509,7 +2508,7 @@ namespace Reallusion.Import
         {
             if (data.Length != 4)
             {
-                Util.LogWarn("Only byte[] of 4 bytes accepted as input.");
+                Debug.LogWarning("Only byte[] of 4 bytes accepted as input.");
                 return 0f;
             }
 
@@ -2541,7 +2540,7 @@ namespace Reallusion.Import
         {
             if (data.Length != 4)
             {
-                Util.LogWarn("Only byte[] of 4 bytes accepted as input.");
+                Debug.LogWarning("Only byte[] of 4 bytes accepted as input.");
                 return 0;
             }
 
@@ -2607,15 +2606,15 @@ namespace Reallusion.Import
 
         static void ExtractFbx(string guid)
         {
-            string assetPath = AssetDatabase.GUIDToAssetPath(guid); Util.LogDetail(assetPath);
-            string assetFolder = Path.GetDirectoryName(assetPath); Util.LogDetail(assetFolder);
+            string assetPath = AssetDatabase.GUIDToAssetPath(guid); Debug.Log(assetPath);
+            string assetFolder = Path.GetDirectoryName(assetPath); Debug.Log(assetFolder);
 
-            string assetName = Path.GetFileNameWithoutExtension(assetPath); Util.LogDetail(assetName);
-            string extractFolderName = assetName + "_fbx"; Util.LogDetail(extractFolderName);
+            string assetName = Path.GetFileNameWithoutExtension(assetPath); Debug.Log(assetName);
+            string extractFolderName = assetName + "_fbx"; Debug.Log(extractFolderName);
 
             string fullExtractPath = AssetDatabase.GUIDToAssetPath(AssetDatabase.CreateFolder(assetFolder, extractFolderName));
 
-            Util.LogDetail(AssetDatabase.GUIDToAssetPath(guid) + " Extract path: " + fullExtractPath);
+            Debug.Log(AssetDatabase.GUIDToAssetPath(guid) + " Extract path: " + fullExtractPath);
             UnityEngine.Object[] contents = AssetDatabase.LoadAllAssetRepresentationsAtPath(AssetDatabase.GUIDToAssetPath(guid));
 
             Dictionary<Type, FbxTypes> types = new Dictionary<Type, FbxTypes>()
@@ -2686,7 +2685,7 @@ namespace Reallusion.Import
                     if (go.GetComponentsInChildren<Transform>() != null)
                     {
                         GameObject p = PrefabUtility.SaveAsPrefabAsset(go, prefabPath);
-                        Util.LogDetail("Saving: " + go.name + " as hierarchy prefab. (" + prefabPath + ")");
+                        Debug.Log("Saving: " + go.name + " as hierarchy prefab. (" + prefabPath + ")");
                         hierarchy = p.GetComponentsInChildren<Transform>();
                     }
                 }
@@ -2771,7 +2770,7 @@ namespace Reallusion.Import
                 }
                 catch
                 {
-                    Util.LogWarn("JToken didn't parse");
+                    Debug.Log("JToken didn't parse");
                     beautifiedJson = dataString;
                 }
             }
@@ -2784,8 +2783,8 @@ namespace Reallusion.Import
 
             if (!Directory.Exists(fullsystemFolder))
             {
-                Util.LogWarn("Unable to write to log file (path to logfile unavailable) - Logging to console.");
-                Util.LogWarn(fullText);
+                Debug.LogWarning("Unable to write to log file (path to logfile unavailable) - Logging to console.");
+                Debug.Log(fullText);
                 recreateLogFolder = true;
                 return;
             }
@@ -2808,7 +2807,7 @@ namespace Reallusion.Import
             }
             catch (Exception ex)
             {
-                Util.LogWarn("Failed to write to log file: " + ex.Message);
+                Debug.LogWarning("Failed to write to log file: " + ex.Message);
             }
         }
         #endregion Log Writer
@@ -2826,7 +2825,7 @@ namespace Reallusion.Import
         {
             if (recreateLogFolder)
             {
-                Util.LogWarn("Log folder absent - recreating");
+                Debug.LogWarning("Log folder absent - recreating");
                 SetupLogging();
                 recreateLogFolder = false;
             }
